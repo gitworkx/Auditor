@@ -6,7 +6,7 @@ import sys
 
 # --- CONFIGURAÇÃO ---
 # Cole seu token entre as aspas abaixo:
-TOKEN = "SEU_TOKEN_AQUI" 
+TOKEN = "MTQ3MTUwMDI3NDUxNzY3MjExOA.GglrVv.vRSc3QoxOeVsE1rwaAmkE3gwHwSX-QvhTR3roQ" 
 
 intents = discord.Intents.default()
 intents.message_content = True 
