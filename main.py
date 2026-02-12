@@ -1,16 +1,4 @@
-from flask import Flask
-import discord
-import asyncio
-
-app = Flask(__name__)
-
-# Flask route
-@app.route('/')
-def home():
-    return "Hello, Flask is running!"
-
-
-# Discord bot setup
+# Setup
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
