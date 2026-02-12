@@ -4,69 +4,78 @@ import asyncio
 import os
 import sys
 
-# 1. Configuração de Intents
+# --- CONFIGURAÇÃO ---
+# Cole seu token entre as aspas abaixo:
+TOKEN = "SEU_TOKEN_AQUI" 
+
 intents = discord.Intents.default()
 intents.message_content = True 
 
-# 2. Inicialização do Bot
-bot = commands.Bot(command_prefix='!', intents=intents)
+auditor = commands.Bot(command_prefix='!', intents=intents)
 
-@bot.event
+@auditor.event
 async def on_ready():
-    print(f'Bot logado como {bot.user}!')
+    print(f'🕵️‍♂️ Auditor pronto para serviço!')
+    await auditor.change_presence(activity=discord.Game(name="Monitorando canais"))
 
-@bot.event
+async def auto_delete_24h(msg):
+    await asyncio.sleep(86400)
+    try:
+        await msg.delete()
+    except:
+        pass
+
+@auditor.event
 async def on_message(message):
-    if message.author == bot.user:
+    if message.author.bot:
         return
 
-    # --- FILTRO NSFW/GORE BÁSICO ---
-    # Se o canal NÃO estiver marcado como NSFW
-    if not message.channel.nsfw:
-        # Se a mensagem contiver anexos (imagens, vídeos, etc)
-        if message.attachments:
-            await message.delete()
-            await message.channel.send(f"🚫 {message.author.mention}, não envie mídias em canais comuns. Use canais NSFW.", delete_after=5)
-            return
+    # Filtro de Segurança com Interface Melhorada
+    if hasattr(message.channel, "is_nsfw") and not message.channel.is_nsfw():
+        if message.attachments or "http" in message.content.lower():
+            try:
+                await message.delete()
+                embed = discord.Embed(
+                    description=f"⚠️ {message.author.mention}, links e mídias só são permitidos em canais **NSFW**.",
+                    color=discord.Color.red()
+                )
+                await message.channel.send(embed=embed, delete_after=7)
+                return 
+            except discord.Forbidden:
+                pass
 
-        # Filtro básico de links (geralmente onde gore/nsfw reside)
-        if "http://" in message.content.lower() or "https://" in message.content.lower():
-            await message.delete()
-            await message.channel.send(f"🚫 {message.author.mention}, links não são permitidos aqui.", delete_after=5)
-            return
-    # -------------------------------
+    auditor.loop.create_task(auto_delete_24h(message))
+    await auditor.process_commands(message)
 
-    await bot.process_commands(message)
+# --- COMANDOS COM VISUAL MELHORADO ---
 
-    # Deleção automática após 24h
-    async def delete_later(msg):
-        await asyncio.sleep(86400)
-        try:
-            await msg.delete()
-        except:
-            pass
-
-    bot.loop.create_task(delete_later(message))
-
-# 3. Comandos
-@bot.command()
+@auditor.command()
 async def ping(ctx):
-    await ctx.send('Pong!')
+    embed = discord.Embed(
+        title="📡 Status de Conexão",
+        description=f"Latência: **{round(auditor.latency * 1000)}ms**",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed)
 
-@bot.command()
-async def panic(ctx):
-    await ctx.send('Panic!')
+@auditor.command()
+async def status(ctx):
+    embed = discord.Embed(
+        title="🛡️ Auditor",
+        description="Sistema operacional.\n• Filtro de links/mídia: **Ativo**\n• Limpeza 24h: **Ativa**",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
 
-@bot.command()
-async def hello(ctx):
-    await ctx.send('Hello there!')
-
-@bot.command()
+@auditor.command()
 @commands.is_owner()
 async def reload(ctx):
-    await ctx.send("🔄 Reiniciando...")
-    os.execv(sys.executable, ['python'] + sys.argv)
+    await ctx.send("🔄 **Auditor:** Reiniciando módulos...")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
-# 4. Rodar o Bot
-token = os.environ.get('TOKEN')
-bot.run(token)
+# Inicialização
+if __name__ == "__main__":
+    if TOKEN != "SEU_TOKEN_AQUI":
+        auditor.run(TOKEN)
+    else:
+        print("❌ ERRO: Você esqueceu de colocar o TOKEN no código!")
