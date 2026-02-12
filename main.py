@@ -15,6 +15,14 @@ intents.message_content = True
 
 auditor = commands.Bot(command_prefix='!', intents=intents)
 
+# --- CLASSE PARA O BOTÃO DE LINKS --- #
+class CreditButtons(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        # Adiciona o botão que redireciona para o GitHub
+        self.add_item(discord.ui.Button(label="Ver Repositório", url="https://github.com", style=discord.ButtonStyle.link))
+        self.add_item(discord.ui.Button(label="Perfil do Dev", url="https://github.com", style=discord.ButtonStyle.link))
+
 @auditor.event
 async def on_ready():
     print(f'🕵️‍♂️ Auditor pronto para serviço!')
@@ -32,15 +40,12 @@ async def update(interaction: discord.Interaction):
     await interaction.response.send_message("🛠️ Iniciando manutenção e busca de atualizações...")
     
     try:
-        # 1. Limpeza de Cache (.pyc e __pycache__)
         deleted_folders = 0
         for root, dirs, files in os.walk('.'):
             if '__pycache__' in dirs:
                 shutil.rmtree(os.path.join(root, '__pycache__'))
                 deleted_folders += 1
         
-        # 2. Puxar código do GitHub/GitLab
-        # O comando 'git pull' assume que você configurou o repositório no servidor
         git_output = subprocess.check_output(['git', 'pull']).decode("utf-8")
         
         embed = discord.Embed(
@@ -51,8 +56,6 @@ async def update(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
         await interaction.followup.send("♻️ Reiniciando o Auditor...")
 
-        # 3. Reinicia o script
-        # Substitui o processo atual por um novo, mantendo os mesmos argumentos
         os.execv(sys.executable, ['python'] + sys.argv)
 
     except Exception as e:
@@ -63,7 +66,35 @@ async def update(interaction: discord.Interaction):
         )
         await interaction.followup.send(embed=error_embed)
 
-# --- COMANDOS EXISTENTES --- #
+# --- COMANDO DE CRÉDITOS COM BOTÃO --- #
+@auditor.tree.command(name="creditos", description="Exibe informações sobre o criador e o projeto")
+async def creditos_slash(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🕵️‍♂️ Auditor - Central de Informações",
+        description="Sistema avançado de auditoria e monitoramento de protocolos.",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="🚀 Desenvolvedor", value="[gitworkx](https://github.com)", inline=True)
+    embed.add_field(name="📂 Projeto", value="Auditor", inline=True)
+    
+    if auditor.user.avatar:
+        embed.set_thumbnail(url=auditor.user.display_avatar.url)
+        
+    embed.set_footer(text="Desenvolvido por gitworkx • 2026")
+    
+    # Enviando a mensagem com a View que contém os botões
+    await interaction.response.send_message(embed=embed, view=CreditButtons())
+
+@auditor.command(name="creditos")
+async def creditos_prefix(ctx):
+    embed = discord.Embed(
+        title="🕵️‍♂️ Auditor - Créditos", 
+        description="Desenvolvido por **gitworkx**.",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed, view=CreditButtons())
+
+# --- COMANDOS DE PING --- #
 @auditor.command(name="ping")
 async def ping_prefix(ctx):
     latencia = round(auditor.latency * 1000)
