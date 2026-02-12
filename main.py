@@ -74,7 +74,7 @@ async def creditos_slash(interaction: discord.Interaction):
         description="Sistema avançado de auditoria e monitoramento de protocolos.",
         color=discord.Color.blue()
     )
-    embed.add_field(name="🚀 Desenvolvedor", value="[gitworkx](https://github.com)", inline=True)
+    embed.add_field(name="🚀 Desenvolvedor", value="[gitworkx](https://github.com/gitworkx)", inline=True)
     embed.add_field(name="📂 Projeto", value="Auditor", inline=True)
     
     if auditor.user.avatar:
@@ -89,7 +89,7 @@ async def creditos_slash(interaction: discord.Interaction):
 async def creditos_prefix(ctx):
     embed = discord.Embed(
         title="🕵️‍♂️ Auditor - Créditos", 
-        description="Desenvolvido por **gitworkx**.",
+        description="Desenvolvido por **Matteo**.",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, view=CreditButtons())
@@ -118,3 +118,4 @@ if __name__ == "__main__":
     else:
         print("❌ ERRO: TOKEN não encontrado. Verifique suas variáveis de ambiente.")
         sys.exit(1)
+        
