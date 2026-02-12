@@ -21,8 +21,14 @@ async def on_ready():
     print(f'{bot.user} has connected to Discord!')
     await bot.tree.sync()
 
+# Slash command: /ping - Responds with Pong
+@bot.tree.command(name="ping", description="Ping the bot")
+async def ping_slash(interaction: discord.Interaction):
+    """Slash command version of ping"""
+    await interaction.response.send_message("Pong! 🏓")
+
 # Slash command: /panic - Delete all messages
-@bot.tree.command(name="panic", description="Delete all messages in this channel (Owner only)")
+@bot.tree.command(name="panic", description="Delete all messages in this channel (Admin only)")
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def panic(interaction: discord.Interaction):
     """
@@ -49,7 +55,7 @@ async def panic(interaction: discord.Interaction):
         
         await interaction.followup.send(f"✅ Panic mode activated! Deleted {deleted_count} messages.")
     except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)}").
+        await interaction.followup.send(f"❌ Error: {str(e)}")
 
 # Legacy prefix command version (optional)
 @bot.command(name="panic_legacy")
