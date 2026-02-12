@@ -1,18 +1,44 @@
+from flask import Flask
 import discord
 import asyncio
 
-class MyClient(discord.Client):
-    async def on_ready(self):
-        print(f'{self.user} has connected to Discord!')
+app = Flask(__name__)
 
-    async def on_message(self, message):
-        if message.author == self.user:
-            return
+# Flask route
+@app.route('/')
+def home():
+    return "Hello, Flask is running!"
 
-        if message.content.startswith('!delete_after_24h'):
-            await message.channel.send('This message will delete in 24 hours.')
-            await asyncio.sleep(86400)  # Sleep for 24 hours (86400 seconds)
-            await message.delete()
 
-client = MyClient()
-client.run('YOUR_TOKEN')
+# Discord bot setup
+intents = discord.Intents.default()
+client = discord.Client(intents=intents)
+
+@client.event
+async def on_ready():
+    print('Bot is ready!')
+
+@client.event
+async def on_message(message):
+    # Automatic message deletion feature
+    if message.author == client.user:
+        return
+    await asyncio.sleep(86400)  # Wait for 24 hours
+    await message.delete()
+
+@client.command()
+async def ping(ctx):
+    await ctx.send('Pong!')
+
+@client.command()
+async def panic(ctx):
+    await ctx.send('Panic!')
+
+@client.command()
+async def hello(ctx):
+    await ctx.send('Hello there!')
+
+# Start both the Flask app and the Discord bot
+if __name__ == '__main__':
+    app.run(debug=True)
+    client.run('YOUR_TOKEN')
