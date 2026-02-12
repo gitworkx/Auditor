@@ -5,7 +5,7 @@ import os
 import sys
 
 # Puxa o token das variáveis de ambiente do sistema/hospedagem
-TOKEN = os.getenv('MTQ3MTUwMDI3NDUxNzY3MjExOA.GglrVv.vRSc3QoxOeVsE1rwaAmkE3gwHwSX-QvhTR3roQ') 
+TOKEN = os.getenv('DISCORD_TOKEN') 
 
 intents = discord.Intents.default()
 intents.message_content = True 
