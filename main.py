@@ -5,10 +5,10 @@ import asyncio
 import os
 import sys
 
-TOKEN = os.getenv('DISCORD_TOKEN') 
+TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
-intents.message_content = True 
+intents.message_content = True
 
 auditor = commands.Bot(command_prefix='!', intents=intents)
 
@@ -16,7 +16,6 @@ auditor = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'🕵️‍♂️ Auditor pronto para serviço!')
     await auditor.change_presence(activity=discord.Game(name="Monitorando protocolos"))
-    
     # Sincroniza os comandos de barra com o servidor do Discord
     try:
         synced = await auditor.tree.sync()
@@ -24,8 +23,7 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Erro ao sincronizar: {e}")
 
-# --- COMANDO HÍBRIDO (PREFIXO E BARRA) ---
-
+# --- COMANDO HÍBRIDO (PREFIXO E BARRA) --- #
 # Comando de Texto (!ping)
 @auditor.command(name="ping")
 async def ping_prefix(ctx):
@@ -55,19 +53,9 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if hasattr(message.channel, "is_nsfw") and not message.channel.is_nsfw():
-        if message.attachments or "http" in message.content.lower():
-            try:
-                await message.delete()
-                embed = discord.Embed(
-                    description=f"⚠️ {message.author.mention}, links e mídias são restritos aos canais **NSFW**.",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed, delete_after=7)
-                return 
-            except:
-                pass
-
+    # O filtro de NSFW agora é delegado ao Discord (AutoMod/Filtro Nativo),
+    # evitando que o bot delete links legítimos por engano.
+    
     await auditor.process_commands(message)
 
 if __name__ == "__main__":
@@ -75,3 +63,4 @@ if __name__ == "__main__":
         auditor.run(TOKEN)
     else:
         print("❌ ERRO: TOKEN não encontrado.")
+        sys.exit(1)
