@@ -6,33 +6,46 @@ import sys
 
 # 1. Configuração de Intents
 intents = discord.Intents.default()
-intents.message_content = True  # Necessário para ler mensagens e comandos
+intents.message_content = True 
 
 # 2. Inicialização do Bot
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Bot logado com sucesso como {bot.user}!')
+    print(f'Bot logado como {bot.user}!')
 
 @bot.event
 async def on_message(message):
-    # Ignora mensagens do próprio bot
     if message.author == bot.user:
         return
 
-    # IMPORTANTE: Permite que os comandos (!ping, etc) funcionem
+    # --- FILTRO NSFW/GORE BÁSICO ---
+    # Se o canal NÃO estiver marcado como NSFW
+    if not message.channel.nsfw:
+        # Se a mensagem contiver anexos (imagens, vídeos, etc)
+        if message.attachments:
+            await message.delete()
+            await message.channel.send(f"🚫 {message.author.mention}, não envie mídias em canais comuns. Use canais NSFW.", delete_after=5)
+            return
+
+        # Filtro básico de links (geralmente onde gore/nsfw reside)
+        if "http://" in message.content.lower() or "https://" in message.content.lower():
+            await message.delete()
+            await message.channel.send(f"🚫 {message.author.mention}, links não são permitidos aqui.", delete_after=5)
+            return
+    # -------------------------------
+
     await bot.process_commands(message)
 
-    # Feature de deleção automática após 24h (sem travar o bot)
+    # Deleção automática após 24h
     async def delete_later(msg):
-        await asyncio.sleep(86400)  # 24 horas
+        await asyncio.sleep(86400)
         try:
             await msg.delete()
-        except Exception as e:
-            print(f"Erro ao deletar mensagem: {e}")
+        except:
+            pass
 
-    # Cria a tarefa em background
     bot.loop.create_task(delete_later(message))
 
 # 3. Comandos
@@ -49,20 +62,11 @@ async def hello(ctx):
     await ctx.send('Hello there!')
 
 @bot.command()
-@commands.is_owner() # Apenas o dono do bot pode usar
+@commands.is_owner()
 async def reload(ctx):
-    """Reinicia o bot para aplicar alterações de código"""
-    await ctx.send("🔄 Reiniciando o bot... Aguarde.")
+    await ctx.send("🔄 Reiniciando...")
     os.execv(sys.executable, ['python'] + sys.argv)
 
-@reload.error
-async def reload_error(ctx, error):
-    if isinstance(error, commands.NotOwner):
-        await ctx.send("❌ Você não tem permissão para reiniciar o bot.")
-
-# 4. Rodar o Bot usando o Secret do Replit
+# 4. Rodar o Bot
 token = os.environ.get('TOKEN')
-if token:
-    bot.run(token)
-else:
-    print("ERRO: O Token não foi encontrado nos Secrets do Replit!")
+bot.run(token)
