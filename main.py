@@ -1,19 +1,25 @@
+from flask import Flask
+import os
+
+app = Flask(__name__)
+
+@app.route('/ping')
+def ping():
+    return "Pong!"
+
 import discord
 from discord.ext import commands
 
-# Ensure you have enabled 'Message Content Intent' in the Discord Dev Portal
 intents = discord.Intents.default()
-intents.message_content = True
+intents.messages = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
-    print('------')
-
 @bot.command()
-async def ping(ctx):
-    await ctx.send('Pong!')
+async def hello(ctx):
+    await ctx.send('Hello, World!')
 
-bot.run('MTQ3MTUwMDI3NDUxNzY3MjExOA.GglrVv.vRSc3QoxOeVsE1rwaAmkE3gwHwSX-QvhTR3roQ')
+if __name__ == '__main__':
+    # Start Discord bot
+    bot.loop.create_task(app.run_async(host='0.0.0.0', port=os.getenv('PORT', 5000)))
+    bot.run(os.getenv('TOKEN'))
