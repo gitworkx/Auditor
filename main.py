@@ -1,32 +1,52 @@
-# Setup
+import discord
+from discord.ext import commands
+import asyncio
+import os
+
+# 1. Configuração de Intents (Importante: Ative "Message Content Intent" no Discord Developer Portal)
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
+intents.message_content = True 
 
-@client.event
+# 2. Uso do commands.Bot para os comandos funcionarem
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+@bot.event
 async def on_ready():
-    print('Bot is ready!')
+    print(f'Bot está online como {bot.user}!')
 
-@client.event
+@bot.event
 async def on_message(message):
-    # Automatic message deletion feature
-    if message.author == client.user:
+    if message.author == bot.user:
         return
-    await asyncio.sleep(86400)  # Wait for 24 hours
-    await message.delete()
 
-@client.command()
+    # IMPORTANTE: Permite que os comandos (!ping, etc) funcionem junto com o on_message
+    await bot.process_commands(message)
+
+    # Deletar após 24h em segundo plano (sem travar o bot)
+    async def delayed_delete(msg):
+        await asyncio.sleep(86400)
+        try:
+            await msg.delete()
+        except Exception as e:
+            print(f"Erro ao deletar: {e}")
+
+    bot.loop.create_task(delayed_delete(message))
+
+@bot.command()
 async def ping(ctx):
     await ctx.send('Pong!')
 
-@client.command()
+@bot.command()
 async def panic(ctx):
     await ctx.send('Panic!')
 
-@client.command()
+@bot.command()
 async def hello(ctx):
     await ctx.send('Hello there!')
 
-# Start both the Flask app and the Discord bot
-if __name__ == '__main__':
-    app.run(debug=True)
-    client.run('YOUR_TOKEN')
+# 3. Rodando o bot com a variável de ambiente do Replit
+# No Replit, vá em "Secrets" (ícone do cadeado) e adicione:
+# Key: TOKEN
+# Value: seu_token_aqui
+token = os.environ.get('TOKEN')
+bot.run(token)
