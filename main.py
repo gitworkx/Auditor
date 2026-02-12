@@ -1,10 +1,10 @@
 import discord
 from discord.ext import commands
+from discord import app_commands # Import necessário para Slash Commands
 import asyncio
 import os
 import sys
 
-# Puxa o token das variáveis de ambiente do sistema/hospedagem
 TOKEN = os.getenv('DISCORD_TOKEN') 
 
 intents = discord.Intents.default()
@@ -16,64 +16,62 @@ auditor = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'🕵️‍♂️ Auditor pronto para serviço!')
     await auditor.change_presence(activity=discord.Game(name="Monitorando protocolos"))
-
-async def auto_delete_24h(msg):
-    await asyncio.sleep(86400)
+    
+    # Sincroniza os comandos de barra com o servidor do Discord
     try:
-        await msg.delete()
-    except:
-        pass
+        synced = await auditor.tree.sync()
+        print(f"📡 {len(synced)} comandos de barra sincronizados!")
+    except Exception as e:
+        print(f"❌ Erro ao sincronizar: {e}")
 
+# --- COMANDO HÍBRIDO (PREFIXO E BARRA) ---
+
+# Comando de Texto (!ping)
+@auditor.command(name="ping")
+async def ping_prefix(ctx):
+    latencia = round(auditor.latency * 1000)
+    embed = discord.Embed(
+        title="📡 Latência de Rede",
+        description=f"O Auditor está operando a **{latencia}ms**",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed)
+
+# Comando de Barra (/ping)
+@auditor.tree.command(name="ping", description="Verifica a latência do Auditor")
+async def ping_slash(interaction: discord.Interaction):
+    latencia = round(auditor.latency * 1000)
+    embed = discord.Embed(
+        title="📡 Latência de Rede",
+        description=f"O Auditor está operando a **{latencia}ms**",
+        color=discord.Color.blue()
+    )
+    # Em comandos de barra, usamos 'interaction.response.send_message'
+    await interaction.response.send_message(embed=embed)
+
+# --- RESTANTE DO CÓDIGO (on_message, etc) ---
 @auditor.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # Filtro de Auditoria (Canais não-NSFW)
     if hasattr(message.channel, "is_nsfw") and not message.channel.is_nsfw():
         if message.attachments or "http" in message.content.lower():
             try:
                 await message.delete()
                 embed = discord.Embed(
                     description=f"⚠️ {message.author.mention}, links e mídias são restritos aos canais **NSFW**.",
-                    color=discord.Color.from_rgb(255, 0, 0)
+                    color=discord.Color.red()
                 )
                 await message.channel.send(embed=embed, delete_after=7)
                 return 
-            except discord.Forbidden:
+            except:
                 pass
 
-    auditor.loop.create_task(auto_delete_24h(message))
     await auditor.process_commands(message)
-
-@auditor.command()
-async def ping(ctx):
-    embed = discord.Embed(
-        title="📡 Latência de Rede",
-        description=f"O Auditor está operando a **{round(auditor.latency * 1000)}ms**",
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-
-@auditor.command()
-async def status(ctx):
-    embed = discord.Embed(
-        title="🛡️ Relatório do Auditor",
-        color=discord.Color.gold()
-    )
-    embed.add_field(name="Monitoramento", value="✅ Ativo", inline=True)
-    embed.add_field(name="Limpeza 24h", value="✅ Ativa", inline=True)
-    embed.set_footer(text="Proteção de integridade do servidor")
-    await ctx.send(embed=embed)
-
-@auditor.command()
-@commands.is_owner()
-async def reload(ctx):
-    await ctx.send("🔄 **Auditor:** Reiniciando módulos do sistema...")
-    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 if __name__ == "__main__":
     if TOKEN:
         auditor.run(TOKEN)
     else:
-        print("❌ ERRO: DISCORD_TOKEN não configurado nas variáveis de ambiente.")
+        print("❌ ERRO: TOKEN não encontrado.")
