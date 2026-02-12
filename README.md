@@ -1,8 +1,11 @@
 # 🕵️‍♂️ Auditor Bot
 
-[![Python Version](https://img.shields.io)](https://www.python.org)
-[![Discord.py](https://img.shields.io)](https://discordpy.readthedocs.io)
-[![License: MIT](https://img.shields.io)](https://opensource.org)
+[![Python Version](<img width="250" height="250" alt="17709366447867371596642648114759" src="https://github.com/user-attachments/assets/9fd7aaa0-5673-4789-b0bc-a9892af045bd" />
+)](https://www.python.org)
+[![Discord.py](<img width="250" height="250" alt="17709366447867371596642648114759" src="https://github.com/user-attachments/assets/9144addd-e520-48b3-bb4e-00993d8aeab0" />
+)](https://discordpy.readthedocs.io)
+[![License: MIT](<img width="250" height="250" alt="17709366447867371596642648114759" src="https://github.com/user-attachments/assets/378e0a92-fd34-4615-8676-9e82a0c13d38" />
+)](https://opensource.org)
 
 O **Auditor** é um sistema de monitoramento automatizado para Discord, projetado para garantir a integridade dos canais através de protocolos de auditoria em tempo real. Ele atua na filtragem de mídias e links, além de gerenciar a persistência de mensagens.
 
