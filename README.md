@@ -8,7 +8,7 @@ The **Auditor** is an automated monitoring system for Discord, designed to ensur
 
 * 🛡️ **NSFW Protocol:** Automatic blocking of attachments and links in unauthorized channels.
 
-* 🧹 **Auto-Cleanup:** System programmed to delete messages after 24 hours.
+
 
 * 📡 **Dynamic Latency:** Constant monitoring of API response.
 
