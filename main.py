@@ -6,13 +6,14 @@ import os
 import sys
 import subprocess
 import shutil
-import requests  # Certifique-se de que 'requests' está no requirements.txt
+import requests
 
 # --- CONFIGURAÇÕES --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
-# Adicionada a barra "/" ao final para evitar erro de URL grudada
-RAW_BASE_URL = "https://raw.githubusercontent.com" 
-CATALOG_URL = f"{RAW_BASE_URL}catalog.json"
+# URL base para downloads (aponta para a raiz do seu repositório no GitHub)
+RAW_BASE_URL = "https://raw.githubusercontent.com"
+# URL direta do catálogo que você forneceu
+CATALOG_URL = "https://raw.githubusercontent.com"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,9 +30,12 @@ class DownloadView(discord.ui.View):
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         
-        # Tenta baixar o arquivo do repositório
-        res = requests.get(f"{RAW_BASE_URL}{self.filename}")
+        # Constrói a URL final: Base + Nome do arquivo vindo do JSON
+        file_url = f"{RAW_BASE_URL}{self.filename}"
+        res = requests.get(file_url)
+        
         if res.status_code == 200:
+            # Salva temporariamente para enviar no Discord
             with open(self.filename, "wb") as f:
                 f.write(res.content)
             
@@ -40,9 +44,9 @@ class DownloadView(discord.ui.View):
                 file=discord.File(self.filename), 
                 ephemeral=True
             )
-            os.remove(self.filename)
+            os.remove(self.filename) # Limpa o arquivo após o envio
         else:
-            await interaction.followup.send("❌ Erro: Arquivo não encontrado no repositório.", ephemeral=True)
+            await interaction.followup.send(f"❌ Erro: Arquivo não encontrado no repositório.\nURL tentada: `{file_url}`", ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
     def __init__(self, scripts_data):
@@ -77,7 +81,7 @@ class CreditButtons(discord.ui.View):
     def __init__(self):
         super().__init__()
         self.add_item(discord.ui.Button(label="Ver Repositório", url="https://github.com", style=discord.ButtonStyle.link))
-        self.add_item(discord.ui.Button(label="Perfil do Dev", url="https://github.com", style=discord.ButtonStyle.link))
+        self.add_item(discord.ui.Button(label="Suporte", url="https://discord.com", style=discord.ButtonStyle.link))
 
 # --- EVENTOS PRINCIPAIS --- #
 
@@ -98,14 +102,17 @@ async def webscripts(interaction: discord.Interaction):
     try:
         response = requests.get(CATALOG_URL)
         if response.status_code != 200:
-            return await interaction.response.send_message(f"❌ Erro ao carregar catálogo (Status: {response.status_code})", ephemeral=True)
+            return await interaction.response.send_message(f"❌ Erro ao carregar `catalog.json`. Status: {response.status_code}", ephemeral=True)
         
         data = response.json()
         scripts = data.get("scripts", [])
 
+        if not scripts:
+            return await interaction.response.send_message("📭 O catálogo está vazio no momento.", ephemeral=True)
+
         embed = discord.Embed(
             title="🌐 Central WebScripts",
-            description="Escolha um script abaixo. O download será enviado de forma privada.",
+            description="Escolha um script abaixo. O download será enviado no seu privado.",
             color=discord.Color.purple()
         )
         embed.set_footer(text="gitworkx/WebScripts • 2026")
@@ -113,60 +120,31 @@ async def webscripts(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(f"⚠️ Erro no sistema: {e}", ephemeral=True)
 
-@auditor.tree.command(name="update", description="Limpa cache, atualiza via Git e reinicia o bot")
+@auditor.tree.command(name="ping", description="Verifica a latência do Auditor")
+async def ping_slash(interaction: discord.Interaction):
+    await interaction.response.send_message(f"📡 Latência: **{round(auditor.latency * 1000)}ms**")
+
+@auditor.tree.command(name="update", description="Atualiza via Git e reinicia o bot")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    await interaction.response.send_message("🛠️ Iniciando manutenção e busca de atualizações...")
+    await interaction.response.send_message("🛠️ Atualizando código via Git...")
     try:
-        deleted_folders = 0
+        # Limpa cache do Python
         for root, dirs, files in os.walk('.'):
             if '__pycache__' in dirs:
                 shutil.rmtree(os.path.join(root, '__pycache__'))
-                deleted_folders += 1
         
-        git_output = subprocess.check_output(['git', 'pull']).decode("utf-8")
+        # Puxa atualizações do GitHub
+        subprocess.check_call(['git', 'pull'])
         
-        embed = discord.Embed(
-            title="✅ Atualização Concluída",
-            description=f"**Cache:** {deleted_folders} pastas limpas.\n**Git:** `{git_output.strip()}`",
-            color=discord.Color.green()
-        )
-        await interaction.followup.send(embed=embed)
-        await interaction.followup.send("♻️ Reiniciando o Auditor...")
-        
-        # Reinicia o processo
+        await interaction.followup.send("♻️ Reiniciando...")
         os.execv(sys.executable, ['python'] + sys.argv)
     except Exception as e:
-        await interaction.followup.send(f"❌ Erro na Atualização: ```{e}```")
-
-@auditor.tree.command(name="creditos", description="Exibe informações sobre o criador")
-async def creditos_slash(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🕵️‍♂️ Auditor - Central de Informações",
-        description="Sistema avançado de auditoria e distribuição de scripts.",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="🚀 Desenvolvedor", value="[gitworkx](https://github.com)", inline=True)
-    if auditor.user.avatar:
-        embed.set_thumbnail(url=auditor.user.display_avatar.url)
-    embed.set_footer(text="Desenvolvido por gitworkx • 2026")
-    await interaction.response.send_message(embed=embed, view=CreditButtons())
-
-@auditor.tree.command(name="ping", description="Verifica a latência do Auditor")
-async def ping_slash(interaction: discord.Interaction):
-    latencia = round(auditor.latency * 1000)
-    await interaction.response.send_message(f"📡 Latência: **{latencia}ms**")
-
-# --- EVENTO DE MENSAGEM (PREFIXO) --- #
-
-@auditor.event
-async def on_message(message):
-    if message.author.bot: return
-    await auditor.process_commands(message)
+        await interaction.followup.send(f"❌ Erro: {e}")
 
 # --- INICIALIZAÇÃO --- #
 if __name__ == "__main__":
     if TOKEN:
         auditor.run(TOKEN)
     else:
-        print("❌ ERRO: Variável de ambiente 'DISCORD_TOKEN' não encontrada.")
+        print("❌ ERRO: Variável DISCORD_TOKEN não configurada.")
