@@ -2,28 +2,26 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import aiohttp
-import asyncio
 import os
 import sys
 import subprocess
-import shutil
+import io
 
-# --- CONFIGURAÇÕES --- #
+# --- CONFIGURATION --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
 RAW_BASE = "https://raw.githubusercontent.com"
-CATALOG_URL = f"{RAW_BASE}catalog.json"
+CATALOG_URL = f"{RAW_BASE}/user/repo/main/catalog.json"
 
 class AuditorBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents)
-        self.session = None # Sessão global para performance
+        self.session: aiohttp.ClientSession = None
 
     async def setup_hook(self):
-        # Cria a sessão de rede uma única vez
         self.session = aiohttp.ClientSession()
-        print(f"📡 Sincronizando comandos...")
+        print(f"📡 Synchronizing slash commands...")
         await self.tree.sync()
 
     async def close(self):
@@ -33,78 +31,110 @@ class AuditorBot(commands.Bot):
 
 bot = AuditorBot()
 
-# --- SISTEMA DE DOWNLOADS --- #
+# --- DOWNLOAD SYSTEM --- #
 
 class DownloadView(discord.ui.View):
-    def __init__(self, filename):
+    def __init__(self, filename: str, locale: discord.Locale):
         super().__init__(timeout=180)
         self.filename = filename
+        self.locale = locale
 
-    @discord.ui.button(label="Baixar Script", style=discord.ButtonStyle.success, emoji="📥")
+    @discord.ui.button(label="Download", style=discord.ButtonStyle.success, emoji="📥")
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         
+        is_pt = interaction.locale == discord.Locale.brazil_portuguese
+        url = f"{RAW_BASE}/{self.filename}"
+        
         try:
-            async with bot.session.get(f"{RAW_BASE}{self.filename}") as resp:
+            async with bot.session.get(url) as resp:
                 if resp.status == 200:
                     data = await resp.read()
-                    # Uso de BytesIO para não precisar salvar arquivo no disco do servidor
-                    import io
-                    file_data = io.BytesIO(data)
-                    await interaction.followup.send(
-                        content=f"✅ **{self.filename}** pronto!",
-                        file=discord.File(file_data, filename=self.filename),
-                        ephemeral=True
-                    )
+                    with io.BytesIO(data) as file_data:
+                        msg = f"✅ **{self.filename}** pronto!" if is_pt else f"✅ **{self.filename}** is ready!"
+                        await interaction.followup.send(
+                            content=msg,
+                            file=discord.File(file_data, filename=self.filename.split('/')[-1]),
+                            ephemeral=True
+                        )
                 else:
-                    await interaction.followup.send(f"❌ Erro no GitHub (Status: {resp.status})", ephemeral=True)
+                    err = f"❌ Erro no GitHub: {resp.status}" if is_pt else f"❌ GitHub Error: {resp.status}"
+                    await interaction.followup.send(err, ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"⚠️ Falha na conexão: {e}", ephemeral=True)
+            err_conn = f"⚠️ Falha na conexão: {e}" if is_pt else f"⚠️ Connection failure: {e}"
+            await interaction.followup.send(err_conn, ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
-    def __init__(self, scripts):
+    def __init__(self, scripts: list, locale: discord.Locale):
+        is_pt = locale == discord.Locale.brazil_portuguese
         options = [
             discord.SelectOption(label=s['nome'], description=s.get('descricao', '')[:100], value=s['arquivo']) 
             for s in scripts
         ]
-        super().__init__(placeholder="Selecione um script...", options=options)
+        placeholder = "Escolha um script..." if is_pt else "Choose a script..."
+        super().__init__(placeholder=placeholder, options=options)
 
     async def callback(self, interaction: discord.Interaction):
+        is_pt = interaction.locale == discord.Locale.brazil_portuguese
+        msg = f"📥 Selecionado: `{self.values[0]}`. Clique abaixo." if is_pt else f"📥 Selected: `{self.values[0]}`. Click below."
+        
         await interaction.response.send_message(
-            f"📥 Você selecionou: `{self.values[0]}`. Clique abaixo para baixar.",
-            view=DownloadView(self.values[0]),
+            content=msg,
+            view=DownloadView(self.values[0], interaction.locale),
             ephemeral=True
         )
 
-# --- COMANDOS --- #
+# --- COMMANDS WITH LOCALIZATION --- #
 
-@bot.tree.command(name="webscripts", description="Catálogo de scripts otimizado")
+@bot.tree.command(
+    name="webscripts",
+    description="Show the script catalog",
+    description_localizations={discord.Locale.brazil_portuguese: "Mostra o catálogo de scripts"}
+)
 async def webscripts(interaction: discord.Interaction):
+    is_pt = interaction.locale == discord.Locale.brazil_portuguese
+    
     try:
         async with bot.session.get(CATALOG_URL) as resp:
             if resp.status != 200:
-                return await interaction.response.send_message("❌ Erro ao acessar catálogo.", ephemeral=True)
+                err = "❌ Erro ao acessar catálogo." if is_pt else "❌ Failed to reach catalog."
+                return await interaction.response.send_message(err, ephemeral=True)
             
             data = await resp.json(content_type=None)
             scripts = data.get("scripts", [])
 
             view = discord.ui.View()
-            view.add_item(WebScriptsSelect(scripts))
+            view.add_item(WebScriptsSelect(scripts, interaction.locale))
             
             embed = discord.Embed(title="🌐 WebScripts Cloud", color=0x2b2d31)
-            embed.set_footer(text="Performance Mode Ativado 🚀")
+            footer = "Modo Performance Ativo 🚀" if is_pt else "Performance Mode Active 🚀"
+            embed.set_footer(text=footer)
+            
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"⚠️ Erro: {e}", ephemeral=True)
+        await interaction.response.send_message(f"⚠️ Error: {e}", ephemeral=True)
 
-@bot.tree.command(name="ping", description="Latência real")
+@bot.tree.command(
+    name="ping",
+    description="Check bot latency",
+    description_localizations={discord.Locale.brazil_portuguese: "Verifica a latência do bot"}
+)
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message(f"⚡ `{round(bot.latency * 1000)}ms`", ephemeral=True)
+    is_pt = interaction.locale == discord.Locale.brazil_portuguese
+    label = "Latência" if is_pt else "Latency"
+    await interaction.response.send_message(f"⚡ {label}: `{round(bot.latency * 1000)}ms`", ephemeral=True)
 
-@bot.tree.command(name="update", description="Git Pull & Reload")
+@bot.tree.command(
+    name="update",
+    description="Update and reload the bot",
+    description_localizations={discord.Locale.brazil_portuguese: "Atualiza e reinicia o bot"}
+)
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    await interaction.response.send_message("🔄 Atualizando...")
+    is_pt = interaction.locale == discord.Locale.brazil_portuguese
+    msg = "🔄 Atualizando..." if is_pt else "🔄 Updating..."
+    
+    await interaction.response.send_message(msg)
     subprocess.run(["git", "pull"])
     os.execv(sys.executable, ['python'] + sys.argv)
 
