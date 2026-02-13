@@ -1,33 +1,38 @@
 # 🕵️‍♂️ Auditor Bot
 
-O **Auditor** é um sistema de monitoramento automatizado para Discord, projetado para garantir a integridade dos canais através de protocolos de auditoria em tempo real. Ele atua na filtragem de mídias e links, além de gerenciar a persistência de mensagens.
+The **Auditor** is an automated monitoring system for Discord, designed to ensure the integrity of channels through real-time audit protocols. It filters media and links, and manages message persistence.
 
 ---
 
-## ✨ Funcionalidades Principais
+## ✨ Main Features
 
-*   🛡️ **Protocolo NSFW:** Bloqueio automático de anexos e links em canais não autorizados.
-*   🧹 **Auto-Cleanup:** Sistema programado para deleção de mensagens após 24 horas.
-*   📡 **Latência Dinâmica:** Monitoramento constante da resposta da API.
-*   🎨 **Interface via Embeds:** Comunicação limpa e profissional através de componentes visuais do Discord.
+* 🛡️ **NSFW Protocol:** Automatic blocking of attachments and links in unauthorized channels.
 
----
+* 🧹 **Auto-Cleanup:** System programmed to delete messages after 24 hours.
 
-## 🚀 Deploy Automático (GitHub Actions)
+* 📡 **Dynamic Latency:** Constant monitoring of API response.
 
-Este projeto foi estruturado para ser **100% autossuficiente** dentro do ecossistema GitHub.
-
-1.  **Fork:** Realize o fork deste repositório.
-2.  **Secrets:** Vá em `Settings` > `Secrets and variables` > `Actions` e adicione seu `DISCORD_TOKEN`.
-3.  **Ativação:** Na aba `Actions`, habilite os Workflows e execute o `Auditor 24/7 Hosting`.
-
-O GitHub Actions cuidará de manter o Auditor online, reiniciando o ciclo de monitoramento periodicamente.
+* 🎨 **Embedded Interface:** Clean and professional communication through Discord's visual components.
 
 ---
 
-## 🛠️ Instalação para Desenvolvedores
+## 🚀 Automatic Deployment (GitHub Actions)
 
-Para expandir as funcionalidades do Auditor localmente:
+This project is structured to be **100% self-sufficient** within the GitHub ecosystem.
+
+1. **Fork:** Fork this repository.
+
+2. **Secrets:** Go to `Settings` > `Secrets and variables` > `Actions` and add your `DISCORD_TOKEN`.
+
+3. **Activation:** In the `Actions` tab, enable Workflows and run `Auditor 24/7 Hosting`.
+
+GitHub Actions will take care of keeping the Auditor online, restarting the monitoring cycle periodically.
+
+---
+
+## 🛠️ Installation for Developers
+
+To expand the Auditor's functionality locally:
 
 ```bash
 git clone https://github.com
