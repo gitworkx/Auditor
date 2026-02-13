@@ -6,39 +6,115 @@ import os
 import sys
 import subprocess
 import shutil
+import requests
 
-# Token do ambiente
+# --- CONFIGURAÇÕES --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
+RAW_BASE_URL = "https://raw.githubusercontent.com"
+CATALOG_URL = f"{RAW_BASE_URL}catalog.json"
 
 intents = discord.Intents.default()
 intents.message_content = True
-
 auditor = commands.Bot(command_prefix='!', intents=intents)
 
-# --- CLASSE PARA O BOTÃO DE LINKS --- #
+# --- SISTEMA WEBSCRIPTS (DINÂMICO VIA JSON) --- #
+
+class DownloadView(discord.ui.View):
+    def __init__(self, filename):
+        super().__init__(timeout=None)
+        self.filename = filename
+
+    @discord.ui.button(label="Baixar Script", style=discord.ButtonStyle.success, emoji="📥")
+    async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        
+        res = requests.get(f"{RAW_BASE_URL}{self.filename}")
+        if res.status_code == 200:
+            with open(self.filename, "wb") as f:
+                f.write(res.content)
+            
+            await interaction.followup.send(
+                content=f"✅ Download concluído: `{self.filename}`", 
+                file=discord.File(self.filename), 
+                ephemeral=True
+            )
+            os.remove(self.filename)
+        else:
+            await interaction.followup.send("❌ Erro: Arquivo não encontrado no repositório.", ephemeral=True)
+
+class WebScriptsSelect(discord.ui.Select):
+    def __init__(self, scripts_data):
+        self.scripts_data = scripts_data
+        options = [
+            discord.SelectOption(
+                label=s['nome'], 
+                description=s['descricao'][:100], 
+                value=s['arquivo']
+            ) for s in scripts_data
+        ]
+        super().__init__(placeholder="Selecione um script do catálogo...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        script = next(s for s in self.scripts_data if s['arquivo'] == self.values)
+        
+        embed = discord.Embed(
+            title=f"📦 {script['nome']}",
+            description=f"**Descrição:** {script['descricao']}\n**Arquivo:** `{script['arquivo']}`",
+            color=discord.Color.blue()
+        )
+        await interaction.response.send_message(embed=embed, view=DownloadView(script['arquivo']), ephemeral=True)
+
+class WebScriptsView(discord.ui.View):
+    def __init__(self, scripts_data):
+        super().__init__()
+        self.add_item(WebScriptsSelect(scripts_data))
+
+# --- CLASSES DE INTERFACE (BOTÕES DE CRÉDITOS) --- #
+
 class CreditButtons(discord.ui.View):
     def __init__(self):
         super().__init__()
-        # Adiciona o botão que redireciona para o GitHub
         self.add_item(discord.ui.Button(label="Ver Repositório", url="https://github.com", style=discord.ButtonStyle.link))
         self.add_item(discord.ui.Button(label="Perfil do Dev", url="https://github.com", style=discord.ButtonStyle.link))
+
+# --- EVENTOS PRINCIPAIS --- #
 
 @auditor.event
 async def on_ready():
     print(f'🕵️‍♂️ Auditor pronto para serviço!')
-    await auditor.change_presence(activity=discord.Game(name="Monitorando protocolos"))
+    await auditor.change_presence(activity=discord.Game(name="WebScripts Cloud 2026"))
     try:
         synced = await auditor.tree.sync()
-        print(f"📡 {len(synced)} comandos de barra sincronizados!")
+        print(f"📡 {len(synced)} comandos sincronizados!")
     except Exception as e:
         print(f"❌ Erro ao sincronizar: {e}")
 
-# --- COMANDO DE UPDATE E RESTART --- #
+# --- COMANDOS DE BARRA (SLASH COMMANDS) --- #
+
+@auditor.tree.command(name="webscripts", description="Acesse o catálogo dinâmico de scripts")
+async def webscripts(interaction: discord.Interaction):
+    try:
+        response = requests.get(CATALOG_URL)
+        if response.status_code != 200:
+            return await interaction.response.send_message("❌ Não foi possível carregar o `catalog.json`.", ephemeral=True)
+        
+        data = response.json()
+        scripts = data.get("scripts", [])
+
+        embed = discord.Embed(
+            title="🌐 Central WebScripts",
+            description="Escolha um script abaixo. O download será enviado de forma privada.",
+            color=discord.Color.purple()
+        )
+        embed.set_footer(text="gitworkx/WebScripts • 2026")
+        await interaction.response.send_message(embed=embed, view=WebScriptsView(scripts))
+    except Exception as e:
+        await interaction.response.send_message(f"⚠️ Erro no sistema: {e}", ephemeral=True)
+
 @auditor.tree.command(name="update", description="Limpa cache, atualiza via Git e reinicia o bot")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
     await interaction.response.send_message("🛠️ Iniciando manutenção e busca de atualizações...")
-    
     try:
         deleted_folders = 0
         for root, dirs, files in os.walk('.'):
@@ -55,60 +131,42 @@ async def update(interaction: discord.Interaction):
         )
         await interaction.followup.send(embed=embed)
         await interaction.followup.send("♻️ Reiniciando o Auditor...")
-
         os.execv(sys.executable, ['python'] + sys.argv)
-
     except Exception as e:
-        error_embed = discord.Embed(
-            title="❌ Erro na Atualização",
-            description=f"Ocorreu um problema: ```{e}```",
-            color=discord.Color.red()
-        )
-        await interaction.followup.send(embed=error_embed)
+        await interaction.followup.send(f"❌ Erro na Atualização: ```{e}```")
 
-# --- COMANDO DE CRÉDITOS COM BOTÃO --- #
-@auditor.tree.command(name="creditos", description="Exibe informações sobre o criador e o projeto")
+@auditor.tree.command(name="creditos", description="Exibe informações sobre o criador")
 async def creditos_slash(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🕵️‍♂️ Auditor - Central de Informações",
-        description="Sistema avançado de auditoria e monitoramento de protocolos.",
+        description="Sistema avançado de auditoria e distribuição de scripts.",
         color=discord.Color.blue()
     )
-    embed.add_field(name="🚀 Desenvolvedor", value="[gitworkx](https://github.com/gitworkx)", inline=True)
-    embed.add_field(name="📂 Projeto", value="Auditor", inline=True)
-    
+    embed.add_field(name="🚀 Desenvolvedor", value="[gitworkx](https://github.com)", inline=True)
     if auditor.user.avatar:
         embed.set_thumbnail(url=auditor.user.display_avatar.url)
-        
     embed.set_footer(text="Desenvolvido por gitworkx • 2026")
-    
-    # Enviando a mensagem com a View que contém os botões
     await interaction.response.send_message(embed=embed, view=CreditButtons())
-
-@auditor.command(name="creditos")
-async def creditos_prefix(ctx):
-    embed = discord.Embed(
-        title="🕵️‍♂️ Auditor - Créditos", 
-        description="Desenvolvido por **Matteo**.",
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed, view=CreditButtons())
-
-# --- COMANDOS DE PING --- #
-@auditor.command(name="ping")
-async def ping_prefix(ctx):
-    latencia = round(auditor.latency * 1000)
-    await ctx.send(f"📡 Latência: **{latencia}ms**")
 
 @auditor.tree.command(name="ping", description="Verifica a latência do Auditor")
 async def ping_slash(interaction: discord.Interaction):
     latencia = round(auditor.latency * 1000)
     await interaction.response.send_message(f"📡 Latência: **{latencia}ms**")
 
+# --- COMANDOS DE PREFIXO (!) --- #
+
+@auditor.command(name="creditos")
+async def creditos_prefix(ctx):
+    embed = discord.Embed(title="🕵️‍♂️ Auditor - Créditos", description="Desenvolvido por **Matteo**.", color=discord.Color.blue())
+    await ctx.send(embed=embed, view=CreditButtons())
+
+@auditor.command(name="ping")
+async def ping_prefix(ctx):
+    await ctx.send(f"📡 Latência: **{round(auditor.latency * 1000)}ms**")
+
 @auditor.event
 async def on_message(message):
-    if message.author.bot:
-        return
+    if message.author.bot: return
     await auditor.process_commands(message)
 
 # --- INICIALIZAÇÃO --- #
@@ -116,6 +174,4 @@ if __name__ == "__main__":
     if TOKEN:
         auditor.run(TOKEN)
     else:
-        print("❌ ERRO: TOKEN não encontrado. Verifique suas variáveis de ambiente.")
-        sys.exit(1)
-        
+        print("❌ ERRO: TOKEN não encontrado.")
