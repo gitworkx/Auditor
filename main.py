@@ -6,13 +6,12 @@ import os
 import sys
 import subprocess
 import io
+from datetime import datetime
 
 # --- CONFIGURATION --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
 RAW_BASE = "https://raw.githubusercontent.com"
-# Repositório oficial fornecido: WebScripts
-CATALOG_URL = "https://raw.githubusercontent.com"
-ALLOWED_EXTENSIONS = ('.py', '.sh', '.json', '.txt', '.js', '.lua')
+CATALOG_URL = f"{RAW_BASE}/catalog.json"
 
 class AuditorBot(commands.Bot):
     def __init__(self):
@@ -24,15 +23,11 @@ class AuditorBot(commands.Bot):
         self._catalog_cache = None
 
     async def fetch_catalog(self):
-        """Fetches the catalog and stores it in memory."""
         try:
             async with self.session.get(CATALOG_URL, timeout=10) as resp:
                 if resp.status == 200:
                     self._catalog_cache = await resp.json(content_type=None)
-                    print(f"✅ Catalog loaded from WebScripts: {len(self._catalog_cache.get('scripts', []))} items.")
                     return True
-                else:
-                    print(f"❌ Catalog error: Status {resp.status}")
         except Exception as e:
             print(f"❌ Connection error: {e}")
         return False
@@ -45,55 +40,17 @@ class AuditorBot(commands.Bot):
 
 bot = AuditorBot()
 
-# --- FASTEST CLEANUP METHOD (NUKE) --- #
-
-async def nuke_channel(channel: discord.TextChannel):
-    """Clones the channel and deletes the old one for instant wiping."""
-    if not channel.permissions_for(channel.guild.me).manage_channels:
-        return None
-    
-    # Clone permissions, slowmode, category, etc.
-    new_channel = await channel.clone(reason="Nuke/Instant Wipe")
-    await new_channel.edit(position=channel.position)
-    await channel.delete(reason="Nuke/Instant Wipe")
-    return new_channel
-
-# --- COMMANDS --- #
-
-@bot.tree.command(name="nuke_channel", description="Instantly wipes THIS channel (Cloning method)")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def nuke_this(interaction: discord.Interaction):
-    # Cannot be ephemeral because the channel will be destroyed
-    await interaction.response.send_message("☢️ **NUKING CHANNEL...**")
-    await nuke_channel(interaction.channel)
-
-@bot.tree.command(name="nuke_server", description="Instantly wipes ALL OTHER text channels")
-@app_commands.checks.has_permissions(administrator=True)
-async def nuke_all(interaction: discord.Interaction):
-    await interaction.response.send_message("🚨 **SERVER WIPE INITIATED...**", ephemeral=True)
-    
-    current_id = interaction.channel_id
-    for channel in interaction.guild.text_channels:
-        if channel.id != current_id:
-            try:
-                await nuke_channel(channel)
-            except:
-                continue
-    
-    await interaction.followup.send("🛡️ All secondary channels have been reset.", ephemeral=True)
-
-# --- SCRIPTS SYSTEM --- #
+# --- STYLIZED UI COMPONENTS --- #
 
 class DownloadView(discord.ui.View):
     def __init__(self, filename: str):
         super().__init__(timeout=180)
         self.filename = filename
 
-    @discord.ui.button(label="Download", style=discord.ButtonStyle.success, emoji="📥")
+    @discord.ui.button(label="Get Script", style=discord.ButtonStyle.blurple, emoji="<:download:1234567890> 📥")
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        # Security hardening: ensure we only get the file from the WebScripts repo
-        file_url = f"https://raw.githubusercontent.com{self.filename}"
+        file_url = f"{RAW_BASE}/{self.filename}"
         
         try:
             async with bot.session.get(file_url, timeout=15) as resp:
@@ -101,59 +58,96 @@ class DownloadView(discord.ui.View):
                     data = await resp.read()
                     file_name = self.filename.split('/')[-1]
                     with io.BytesIO(data) as f:
-                        await interaction.followup.send(
-                            content=f"✅ **{file_name}** delivered from WebScripts.",
-                            file=discord.File(f, filename=file_name),
-                            ephemeral=True
+                        embed = discord.Embed(
+                            description=f"✅ **{file_name}** successfully retrieved from the cloud.",
+                            color=0x43b581 # Green
                         )
+                        await interaction.followup.send(embed=embed, file=discord.File(f, filename=file_name), ephemeral=True)
                 else:
-                    await interaction.followup.send(f"❌ File not found (Status {resp.status})", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"⚠️ Error: {e}", ephemeral=True)
+                    await interaction.followup.send("❌ **Source Error:** File not found on GitHub.", ephemeral=True)
+        except Exception:
+            await interaction.followup.send("⚠️ **Network Error:** Could not reach the cloud.", ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
     def __init__(self, scripts: list):
         options = [
-            discord.SelectOption(label=s['nome'], description=s.get('descricao', '')[:50], value=s['arquivo']) 
-            for s in scripts[:25]
+            discord.SelectOption(
+                label=s['nome'], 
+                description=s.get('descricao', 'No description provided.')[:50], 
+                emoji="📄",
+                value=s['arquivo']
+            ) for s in scripts[:25]
         ]
-        super().__init__(placeholder="Select a verified script...", options=options)
+        super().__init__(placeholder="📂 Browse our secure script library...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            content=f"📥 **Script:** `{self.values[0]}`",
-            view=DownloadView(self.values[0]),
-            ephemeral=True
+        embed = discord.Embed(
+            title="📥 Ready to Download",
+            description=f"You selected: `{self.values[0]}`\n\nClick the button below to receive your encrypted file.",
+            color=0x5865f2 # Blurple
         )
+        await interaction.response.send_message(embed=embed, view=DownloadView(self.values[0]), ephemeral=True)
 
-@bot.tree.command(name="webscripts", description="Access the WebScripts catalog")
+# --- BEAUTIFIED COMMANDS --- #
+
+@bot.tree.command(name="webscripts", description="Access the premium WebScripts library")
 async def webscripts(interaction: discord.Interaction):
-    if not bot._catalog_cache:
-        await bot.fetch_catalog()
+    if not bot._catalog_cache: await bot.fetch_catalog()
 
     if not bot._catalog_cache:
-        return await interaction.response.send_message("❌ Database offline. Verify GitHub RAW link.", ephemeral=True)
+        return await interaction.response.send_message("❌ **System Offline:** Could not sync with database.", ephemeral=True)
 
     scripts_list = bot._catalog_cache.get("scripts", [])
+    
+    embed = discord.Embed(
+        title="🛡️ WebScripts Cloud Storage",
+        description="Welcome to the secure repository. Select a verified tool from the dropdown menu below to begin.",
+        color=0x2b2d31 # Dark Mode Gray
+    )
+    embed.add_field(name="Total Scripts", value=f"📊 `{len(scripts_list)}` available", inline=True)
+    embed.add_field(name="System Status", value="🟢 `Operational`", inline=True)
+    embed.set_image(url="https://i.imgur.com") # Opcional: Adicione um banner
+    embed.set_footer(text="Verified Repository: gitworkx/WebScripts • 2026", icon_url=bot.user.display_avatar.url)
+
     view = discord.ui.View()
     view.add_item(WebScriptsSelect(scripts_list))
-    
-    embed = discord.Embed(title="🛡️ WebScripts Secure Cloud", color=0x2b2d31)
-    embed.set_footer(text="Verified Repository: gitworkx/WebScripts")
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-# --- ADMIN --- #
+@bot.tree.command(name="nuke", description="☢️ Instant wipe this channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def nuke(interaction: discord.Interaction):
+    channel = interaction.channel
+    await interaction.response.send_message("☢️ **NUKING...**", ephemeral=True)
+    
+    new_channel = await channel.clone(reason="Manual Nuke")
+    await new_channel.edit(position=channel.position)
+    await channel.delete()
+    
+    # Envia mensagem estilizada no canal NOVO
+    final_embed = discord.Embed(
+        title="☣️ Channel Reset",
+        description=f"This channel was wiped by **{interaction.user.name}**.\nAll traces have been removed.",
+        color=0xff4747,
+        timestamp=datetime.now()
+    )
+    final_embed.set_image(url="https://media.giphy.com")
+    await new_channel.send(embed=final_embed)
 
-@bot.tree.command(name="ping", description="Check latency")
+@bot.tree.command(name="ping", description="Check system heartbeat")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message(f"⚡ Latency: `{round(bot.latency * 1000)}ms`", ephemeral=True)
+    latency = round(bot.latency * 1000)
+    color = 0x43b581 if latency < 100 else 0xfaa61a
+    embed = discord.Embed(description=f"📡 **Gateway Latency:** `{latency}ms`", color=color)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="update", description="Git Pull & Cache Reset")
+@bot.tree.command(name="update", description="Push updates and clear cache")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    await interaction.response.send_message("🔄 Synchronizing with WebScripts...")
+    embed = discord.Embed(description="🔄 **Synchronizing files and rebooting...**", color=0x5865f2)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    
     subprocess.run(["git", "pull"], check=True)
-    await bot.fetch_catalog() # Força recarga do JSON após o update
+    await bot.fetch_catalog()
     os.execv(sys.executable, ['python'] + sys.argv)
 
 if __name__ == "__main__":
