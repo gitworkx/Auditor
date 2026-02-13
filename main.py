@@ -10,7 +10,7 @@ import io
 # --- CONFIGURATION --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
 RAW_BASE = "https://raw.githubusercontent.com"
-CATALOG_URL = f"{RAW_BASE}/user/repo/main/catalog.json"
+CATALOG_URL = f"{RAW_BASE}/gitworkx/Auditor/main/catalog.json"
 
 class AuditorBot(commands.Bot):
     def __init__(self):
@@ -42,7 +42,6 @@ class DownloadView(discord.ui.View):
     @discord.ui.button(label="Download", style=discord.ButtonStyle.success, emoji="📥")
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        
         is_pt = interaction.locale == discord.Locale.brazil_portuguese
         url = f"{RAW_BASE}/{self.filename}"
         
@@ -51,7 +50,7 @@ class DownloadView(discord.ui.View):
                 if resp.status == 200:
                     data = await resp.read()
                     with io.BytesIO(data) as file_data:
-                        msg = f"✅ **{self.filename}** pronto!" if is_pt else f"✅ **{self.filename}** is ready!"
+                        msg = f"✅ **{self.filename.split('/')[-1]}** pronto!" if is_pt else f"✅ **{self.filename.split('/')[-1]}** is ready!"
                         await interaction.followup.send(
                             content=msg,
                             file=discord.File(file_data, filename=self.filename.split('/')[-1]),
@@ -61,7 +60,7 @@ class DownloadView(discord.ui.View):
                     err = f"❌ Erro no GitHub: {resp.status}" if is_pt else f"❌ GitHub Error: {resp.status}"
                     await interaction.followup.send(err, ephemeral=True)
         except Exception as e:
-            err_conn = f"⚠️ Falha na conexão: {e}" if is_pt else f"⚠️ Connection failure: {e}"
+            err_conn = f"⚠️ Falha: {e}" if is_pt else f"⚠️ Failure: {e}"
             await interaction.followup.send(err_conn, ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
@@ -76,22 +75,20 @@ class WebScriptsSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         is_pt = interaction.locale == discord.Locale.brazil_portuguese
-        msg = f"📥 Selecionado: `{self.values[0]}`. Clique abaixo." if is_pt else f"📥 Selected: `{self.values[0]}`. Click below."
-        
+        msg = f"📥 Selecionado: `{self.values[0]}`." if is_pt else f"📥 Selected: `{self.values[0]}`."
         await interaction.response.send_message(
             content=msg,
             view=DownloadView(self.values[0], interaction.locale),
             ephemeral=True
         )
 
-# --- COMMANDS WITH LOCALIZATION --- #
+# --- COMMANDS --- #
 
-@bot.tree.command(
-    name="webscripts",
-    description="Show the script catalog",
-    description_localizations={discord.Locale.brazil_portuguese: "Mostra o catálogo de scripts"}
-)
+# Usando dicionários de localização nos nomes e descrições de forma segura
+@bot.tree.command(name="webscripts", description="Show the script catalog")
+@app_commands.describe(filename="The script to download")
 async def webscripts(interaction: discord.Interaction):
+    # Definindo descrições manuais se o comando tree falhar na tradução automática
     is_pt = interaction.locale == discord.Locale.brazil_portuguese
     
     try:
@@ -107,36 +104,30 @@ async def webscripts(interaction: discord.Interaction):
             view.add_item(WebScriptsSelect(scripts, interaction.locale))
             
             embed = discord.Embed(title="🌐 WebScripts Cloud", color=0x2b2d31)
-            footer = "Modo Performance Ativo 🚀" if is_pt else "Performance Mode Active 🚀"
+            footer = "🚀 Performance Mode"
             embed.set_footer(text=footer)
             
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"⚠️ Error: {e}", ephemeral=True)
 
-@bot.tree.command(
-    name="ping",
-    description="Check bot latency",
-    description_localizations={discord.Locale.brazil_portuguese: "Verifica a latência do bot"}
-)
+@bot.tree.command(name="ping", description="Check bot latency")
 async def ping(interaction: discord.Interaction):
     is_pt = interaction.locale == discord.Locale.brazil_portuguese
     label = "Latência" if is_pt else "Latency"
     await interaction.response.send_message(f"⚡ {label}: `{round(bot.latency * 1000)}ms`", ephemeral=True)
 
-@bot.tree.command(
-    name="update",
-    description="Update and reload the bot",
-    description_localizations={discord.Locale.brazil_portuguese: "Atualiza e reinicia o bot"}
-)
+@bot.tree.command(name="update", description="Update and reload the bot")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
     is_pt = interaction.locale == discord.Locale.brazil_portuguese
     msg = "🔄 Atualizando..." if is_pt else "🔄 Updating..."
-    
     await interaction.response.send_message(msg)
+    
     subprocess.run(["git", "pull"])
     os.execv(sys.executable, ['python'] + sys.argv)
 
 if __name__ == "__main__":
+    # Garante que a lib está atualizada no ambiente (Opcional, mas ajuda no Replit/GitHub Actions)
+    # subprocess.run([sys.executable, "-m", "pip", "install", "-U", "discord.py"])
     bot.run(TOKEN)
