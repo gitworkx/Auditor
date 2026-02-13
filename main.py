@@ -6,11 +6,12 @@ import os
 import sys
 import subprocess
 import shutil
-import requests
+import requests  # Certifique-se de que 'requests' está no requirements.txt
 
 # --- CONFIGURAÇÕES --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
-RAW_BASE_URL = "https://raw.githubusercontent.com"
+# Adicionada a barra "/" ao final para evitar erro de URL grudada
+RAW_BASE_URL = "https://raw.githubusercontent.com" 
 CATALOG_URL = f"{RAW_BASE_URL}catalog.json"
 
 intents = discord.Intents.default()
@@ -28,6 +29,7 @@ class DownloadView(discord.ui.View):
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         
+        # Tenta baixar o arquivo do repositório
         res = requests.get(f"{RAW_BASE_URL}{self.filename}")
         if res.status_code == 200:
             with open(self.filename, "wb") as f:
@@ -69,7 +71,7 @@ class WebScriptsView(discord.ui.View):
         super().__init__()
         self.add_item(WebScriptsSelect(scripts_data))
 
-# --- CLASSES DE INTERFACE (BOTÕES DE CRÉDITOS) --- #
+# --- CLASSES DE INTERFACE --- #
 
 class CreditButtons(discord.ui.View):
     def __init__(self):
@@ -96,7 +98,7 @@ async def webscripts(interaction: discord.Interaction):
     try:
         response = requests.get(CATALOG_URL)
         if response.status_code != 200:
-            return await interaction.response.send_message("❌ Não foi possível carregar o `catalog.json`.", ephemeral=True)
+            return await interaction.response.send_message(f"❌ Erro ao carregar catálogo (Status: {response.status_code})", ephemeral=True)
         
         data = response.json()
         scripts = data.get("scripts", [])
@@ -131,6 +133,8 @@ async def update(interaction: discord.Interaction):
         )
         await interaction.followup.send(embed=embed)
         await interaction.followup.send("♻️ Reiniciando o Auditor...")
+        
+        # Reinicia o processo
         os.execv(sys.executable, ['python'] + sys.argv)
     except Exception as e:
         await interaction.followup.send(f"❌ Erro na Atualização: ```{e}```")
@@ -153,16 +157,7 @@ async def ping_slash(interaction: discord.Interaction):
     latencia = round(auditor.latency * 1000)
     await interaction.response.send_message(f"📡 Latência: **{latencia}ms**")
 
-# --- COMANDOS DE PREFIXO (!) --- #
-
-@auditor.command(name="creditos")
-async def creditos_prefix(ctx):
-    embed = discord.Embed(title="🕵️‍♂️ Auditor - Créditos", description="Desenvolvido por **Matteo**.", color=discord.Color.blue())
-    await ctx.send(embed=embed, view=CreditButtons())
-
-@auditor.command(name="ping")
-async def ping_prefix(ctx):
-    await ctx.send(f"📡 Latência: **{round(auditor.latency * 1000)}ms**")
+# --- EVENTO DE MENSAGEM (PREFIXO) --- #
 
 @auditor.event
 async def on_message(message):
@@ -174,4 +169,4 @@ if __name__ == "__main__":
     if TOKEN:
         auditor.run(TOKEN)
     else:
-        print("❌ ERRO: TOKEN não encontrado.")
+        print("❌ ERRO: Variável de ambiente 'DISCORD_TOKEN' não encontrada.")
