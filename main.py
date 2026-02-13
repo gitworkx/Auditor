@@ -6,7 +6,6 @@ import os
 import sys
 import subprocess
 import io
-from datetime import datetime
 
 # --- CONFIGURATION --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -28,126 +27,90 @@ class AuditorBot(commands.Bot):
                 if resp.status == 200:
                     self._catalog_cache = await resp.json(content_type=None)
                     return True
-        except Exception as e:
-            print(f"❌ Connection error: {e}")
-        return False
+        except Exception: return False
 
     async def setup_hook(self):
-        connector = aiohttp.TCPConnector(limit=50)
-        self.session = aiohttp.ClientSession(connector=connector)
+        self.session = aiohttp.ClientSession()
         await self.fetch_catalog()
         await self.tree.sync()
 
 bot = AuditorBot()
 
-# --- STYLIZED UI COMPONENTS --- #
+# --- AUTOMATIC LOCALIZATION ENGINE --- #
 
 class DownloadView(discord.ui.View):
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, locale: discord.Locale):
         super().__init__(timeout=180)
         self.filename = filename
+        # Detecta se o usuário usa PT-BR, caso contrário, Inglês
+        self.is_pt = locale == discord.Locale.brazil_portuguese
 
-    @discord.ui.button(label="Get Script", style=discord.ButtonStyle.blurple, emoji="<:download:1234567890> 📥")
+    @discord.ui.button(label="Get Script", style=discord.ButtonStyle.blurple)
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        file_url = f"{RAW_BASE}/{self.filename}"
         
         try:
-            async with bot.session.get(file_url, timeout=15) as resp:
+            async with bot.session.get(f"{RAW_BASE}/{self.filename}") as resp:
                 if resp.status == 200:
                     data = await resp.read()
-                    file_name = self.filename.split('/')[-1]
-                    with io.BytesIO(data) as f:
-                        embed = discord.Embed(
-                            description=f"✅ **{file_name}** successfully retrieved from the cloud.",
-                            color=0x43b581 # Green
-                        )
-                        await interaction.followup.send(embed=embed, file=discord.File(f, filename=file_name), ephemeral=True)
+                    msg = "✅ Arquivo enviado!" if self.is_pt else "✅ File delivered!"
+                    await interaction.followup.send(content=msg, file=discord.File(io.BytesIO(data), filename=self.filename), ephemeral=True)
                 else:
-                    await interaction.followup.send("❌ **Source Error:** File not found on GitHub.", ephemeral=True)
+                    msg = "❌ Erro no servidor." if self.is_pt else "❌ Server error."
+                    await interaction.followup.send(msg, ephemeral=True)
         except Exception:
-            await interaction.followup.send("⚠️ **Network Error:** Could not reach the cloud.", ephemeral=True)
+            await interaction.followup.send("⚠️ Error", ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
-    def __init__(self, scripts: list):
-        options = [
-            discord.SelectOption(
-                label=s['nome'], 
-                description=s.get('descricao', 'No description provided.')[:50], 
-                emoji="📄",
-                value=s['arquivo']
-            ) for s in scripts[:25]
-        ]
-        super().__init__(placeholder="📂 Browse our secure script library...", options=options)
+    def __init__(self, scripts: list, locale: discord.Locale):
+        is_pt = locale == discord.Locale.brazil_portuguese
+        options = [discord.SelectOption(label=s['nome'], value=s['arquivo']) for s in scripts[:25]]
+        placeholder = "Selecione um script..." if is_pt else "Select a script..."
+        super().__init__(placeholder=placeholder, options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="📥 Ready to Download",
-            description=f"You selected: `{self.values[0]}`\n\nClick the button below to receive your encrypted file.",
-            color=0x5865f2 # Blurple
-        )
-        await interaction.response.send_message(embed=embed, view=DownloadView(self.values[0]), ephemeral=True)
+        is_pt = interaction.locale == discord.Locale.brazil_portuguese
+        msg = "📥 Script selecionado." if is_pt else "📥 Script selected."
+        await interaction.response.send_message(content=msg, view=DownloadView(self.values, interaction.locale), ephemeral=True)
 
-# --- BEAUTIFIED COMMANDS --- #
+# --- COMMANDS WITH NATIVE TRANSLATION --- #
 
-@bot.tree.command(name="webscripts", description="Access the premium WebScripts library")
+@bot.tree.command(
+    name="webscripts", 
+    description="Access the scripts library",
+    description_localizations={discord.Locale.brazil_portuguese: "Acessar a biblioteca de scripts"}
+)
 async def webscripts(interaction: discord.Interaction):
+    is_pt = interaction.locale == discord.Locale.brazil_portuguese
     if not bot._catalog_cache: await bot.fetch_catalog()
 
-    if not bot._catalog_cache:
-        return await interaction.response.send_message("❌ **System Offline:** Could not sync with database.", ephemeral=True)
-
-    scripts_list = bot._catalog_cache.get("scripts", [])
-    
     embed = discord.Embed(
-        title="🛡️ WebScripts Cloud Storage",
-        description="Welcome to the secure repository. Select a verified tool from the dropdown menu below to begin.",
-        color=0x2b2d31 # Dark Mode Gray
+        title="🛡️ WebScripts Cloud",
+        description="Select a tool below." if not is_pt else "Selecione uma ferramenta abaixo.",
+        color=0x2b2d31
     )
-    embed.add_field(name="Total Scripts", value=f"📊 `{len(scripts_list)}` available", inline=True)
-    embed.add_field(name="System Status", value="🟢 `Operational`", inline=True)
-    embed.set_image(url="https://i.imgur.com") # Opcional: Adicione um banner
-    embed.set_footer(text="Verified Repository: gitworkx/WebScripts • 2026", icon_url=bot.user.display_avatar.url)
-
+    
     view = discord.ui.View()
-    view.add_item(WebScriptsSelect(scripts_list))
+    view.add_item(WebScriptsSelect(bot._catalog_cache.get("scripts", []), interaction.locale))
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-@bot.tree.command(name="nuke", description="☢️ Instant wipe this channel")
+@bot.tree.command(name="nuke", description="☢️ Reset this channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def nuke(interaction: discord.Interaction):
+    # O nuke apaga o canal, então a resposta precisa ser rápida
     channel = interaction.channel
-    await interaction.response.send_message("☢️ **NUKING...**", ephemeral=True)
-    
-    new_channel = await channel.clone(reason="Manual Nuke")
+    new_channel = await channel.clone()
     await new_channel.edit(position=channel.position)
     await channel.delete()
     
-    # Envia mensagem estilizada no canal NOVO
-    final_embed = discord.Embed(
-        title="☣️ Channel Reset",
-        description=f"This channel was wiped by **{interaction.user.name}**.\nAll traces have been removed.",
-        color=0xff4747,
-        timestamp=datetime.now()
-    )
-    final_embed.set_image(url="https://media.giphy.com")
-    await new_channel.send(embed=final_embed)
+    msg = "☢️ **Channel Reset**" if interaction.locale != discord.Locale.brazil_portuguese else "☢️ **Canal Resetado**"
+    await new_channel.send(msg)
 
-@bot.tree.command(name="ping", description="Check system heartbeat")
-async def ping(interaction: discord.Interaction):
-    latency = round(bot.latency * 1000)
-    color = 0x43b581 if latency < 100 else 0xfaa61a
-    embed = discord.Embed(description=f"📡 **Gateway Latency:** `{latency}ms`", color=color)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-@bot.tree.command(name="update", description="Push updates and clear cache")
+@bot.tree.command(name="update", description="Reboot system")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    embed = discord.Embed(description="🔄 **Synchronizing files and rebooting...**", color=0x5865f2)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-    
+    await interaction.response.send_message("🔄 Synchronizing...")
     subprocess.run(["git", "pull"], check=True)
-    await bot.fetch_catalog()
     os.execv(sys.executable, ['python'] + sys.argv)
 
 if __name__ == "__main__":
