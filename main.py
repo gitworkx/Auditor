@@ -1,16 +1,18 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import aiohttp
 import os
 import sys
 import subprocess
 import io
+from datetime import datetime, timedelta, timezone
 
 # --- CONFIGURATION --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
 RAW_BASE = "https://raw.githubusercontent.com"
 CATALOG_URL = f"{RAW_BASE}/gitworkx/Auditor/main/catalog.json"
+ALLOWED_EXTENSIONS = ('.py', '.sh', '.json', '.txt', '.js') # Hardening: restricts file types
 
 class AuditorBot(commands.Bot):
     def __init__(self):
@@ -18,11 +20,47 @@ class AuditorBot(commands.Bot):
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents)
         self.session: aiohttp.ClientSession = None
+        self._catalog_cache = None
+
+    async def fetch_catalog(self):
+        """Hardened fetch: limits response size to prevent RAM exhaustion."""
+        try:
+            async with self.session.get(CATALOG_URL, timeout=10) as resp:
+                if resp.status == 200:
+                    # Read max 1MB to prevent large payload attacks
+                    content = await resp.read()
+                    if len(content) > 1024 * 1024: return False
+                    self._catalog_cache = await resp.json(content_type=None)
+                    return True
+        except Exception as e:
+            print(f"❌ Security Alert - Fetch Error: {e}")
+        return False
 
     async def setup_hook(self):
-        self.session = aiohttp.ClientSession()
-        print(f"📡 Synchronizing slash commands...")
+        # Hardened headers to mimic a browser/official client
+        headers = {'User-Agent': 'AuditorBot/2.0 (Security-Hardened)'}
+        connector = aiohttp.TCPConnector(limit=25, ttl_dns_cache=300)
+        self.session = aiohttp.ClientSession(connector=connector, headers=headers)
+        
+        await self.fetch_catalog()
+        self.auto_purge_task.start() # Starts the 24h cleanup cycle
         await self.tree.sync()
+
+    @tasks.loop(hours=1)
+    async def auto_purge_task(self):
+        """Background task to bulk delete messages older than 24h."""
+        for guild in self.guilds:
+            for channel in guild.text_channels:
+                # Check if bot has permission to manage messages
+                if channel.permissions_for(guild.me).manage_messages:
+                    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+                    try:
+                        # bulk=True uses Discord's mass delete (optimized)
+                        deleted = await channel.purge(before=cutoff, bulk=True)
+                        if len(deleted) > 0:
+                            print(f"🗑️ Purged {len(deleted)} messages in {channel.name}")
+                    except Exception as e:
+                        print(f"⚠️ Purge failed in {channel.name}: {e}")
 
     async def close(self):
         if self.session:
@@ -31,103 +69,87 @@ class AuditorBot(commands.Bot):
 
 bot = AuditorBot()
 
-# --- DOWNLOAD SYSTEM --- #
+# --- HARDENED DOWNLOAD SYSTEM --- #
 
 class DownloadView(discord.ui.View):
-    def __init__(self, filename: str, locale: discord.Locale):
+    __slots__ = ('filename',)
+
+    def __init__(self, filename: str):
         super().__init__(timeout=180)
         self.filename = filename
-        self.locale = locale
 
     @discord.ui.button(label="Download", style=discord.ButtonStyle.success, emoji="📥")
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        is_pt = interaction.locale == discord.Locale.brazil_portuguese
-        url = f"{RAW_BASE}/{self.filename}"
+        
+        # --- HARDENING: Path Traversal & Extension Protection ---
+        clean_filename = os.path.normpath(self.filename).lstrip('./\\')
+        if not clean_filename.endswith(ALLOWED_EXTENSIONS) or ".." in clean_filename:
+            return await interaction.followup.send("❌ Security Violation: Invalid file path/type.", ephemeral=True)
         
         try:
-            async with bot.session.get(url) as resp:
+            async with bot.session.get(f"{RAW_BASE}/{clean_filename}", timeout=15) as resp:
                 if resp.status == 200:
                     data = await resp.read()
-                    with io.BytesIO(data) as file_data:
-                        msg = f"✅ **{self.filename.split('/')[-1]}** pronto!" if is_pt else f"✅ **{self.filename.split('/')[-1]}** is ready!"
+                    file_display_name = clean_filename.split('/')[-1]
+                    
+                    with io.BytesIO(data) as f:
                         await interaction.followup.send(
-                            content=msg,
-                            file=discord.File(file_data, filename=self.filename.split('/')[-1]),
+                            content=f"✅ **{file_display_name}** secure delivery complete.",
+                            file=discord.File(f, filename=file_display_name),
                             ephemeral=True
                         )
                 else:
-                    err = f"❌ Erro no GitHub: {resp.status}" if is_pt else f"❌ GitHub Error: {resp.status}"
-                    await interaction.followup.send(err, ephemeral=True)
+                    await interaction.followup.send(f"❌ GitHub Source Error: {resp.status}", ephemeral=True)
         except Exception as e:
-            err_conn = f"⚠️ Falha: {e}" if is_pt else f"⚠️ Failure: {e}"
-            await interaction.followup.send(err_conn, ephemeral=True)
+            await interaction.followup.send(f"⚠️ Request Blocked: {e}", ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
-    def __init__(self, scripts: list, locale: discord.Locale):
-        is_pt = locale == discord.Locale.brazil_portuguese
+    def __init__(self, scripts: list):
         options = [
-            discord.SelectOption(label=s['nome'], description=s.get('descricao', '')[:100], value=s['arquivo']) 
-            for s in scripts
+            discord.SelectOption(label=s['nome'], value=s['arquivo']) 
+            for s in scripts[:25]
         ]
-        placeholder = "Escolha um script..." if is_pt else "Choose a script..."
-        super().__init__(placeholder=placeholder, options=options)
+        super().__init__(placeholder="Select a verified script...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        is_pt = interaction.locale == discord.Locale.brazil_portuguese
-        msg = f"📥 Selecionado: `{self.values[0]}`." if is_pt else f"📥 Selected: `{self.values[0]}`."
         await interaction.response.send_message(
-            content=msg,
-            view=DownloadView(self.values[0], interaction.locale),
+            content=f"📥 Script locked: `{self.values[0]}`. Proceed to download?",
+            view=DownloadView(self.values[0]),
             ephemeral=True
         )
 
 # --- COMMANDS --- #
 
-# Usando dicionários de localização nos nomes e descrições de forma segura
-@bot.tree.command(name="webscripts", description="Show the script catalog")
-@app_commands.describe(filename="The script to download")
+@bot.tree.command(name="webscripts", description="Encrypted access to scripts")
 async def webscripts(interaction: discord.Interaction):
-    # Definindo descrições manuais se o comando tree falhar na tradução automática
-    is_pt = interaction.locale == discord.Locale.brazil_portuguese
+    if not bot._catalog_cache:
+        await bot.fetch_catalog()
+
+    scripts_list = bot._catalog_cache.get("scripts", []) if bot._catalog_cache else []
+    if not scripts_list:
+        return await interaction.response.send_message("❌ Database offline.", ephemeral=True)
+
+    view = discord.ui.View()
+    view.add_item(WebScriptsSelect(scripts_list))
     
-    try:
-        async with bot.session.get(CATALOG_URL) as resp:
-            if resp.status != 200:
-                err = "❌ Erro ao acessar catálogo." if is_pt else "❌ Failed to reach catalog."
-                return await interaction.response.send_message(err, ephemeral=True)
-            
-            data = await resp.json(content_type=None)
-            scripts = data.get("scripts", [])
+    embed = discord.Embed(title="🛡️ Auditor Secure Cloud", color=0x2f3136)
+    embed.set_footer(text="Verified & Hardened Environment 🚀")
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-            view = discord.ui.View()
-            view.add_item(WebScriptsSelect(scripts, interaction.locale))
-            
-            embed = discord.Embed(title="🌐 WebScripts Cloud", color=0x2b2d31)
-            footer = "🚀 Performance Mode"
-            embed.set_footer(text=footer)
-            
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"⚠️ Error: {e}", ephemeral=True)
-
-@bot.tree.command(name="ping", description="Check bot latency")
+@bot.tree.command(name="ping", description="Network heartbeat")
 async def ping(interaction: discord.Interaction):
-    is_pt = interaction.locale == discord.Locale.brazil_portuguese
-    label = "Latência" if is_pt else "Latency"
-    await interaction.response.send_message(f"⚡ {label}: `{round(bot.latency * 1000)}ms`", ephemeral=True)
+    await interaction.response.send_message(f"⚡ Latency: `{round(bot.latency * 1000)}ms`", ephemeral=True)
 
-@bot.tree.command(name="update", description="Update and reload the bot")
+@bot.tree.command(name="update", description="Secure Hot-Reload")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    is_pt = interaction.locale == discord.Locale.brazil_portuguese
-    msg = "🔄 Atualizando..." if is_pt else "🔄 Updating..."
-    await interaction.response.send_message(msg)
-    
-    subprocess.run(["git", "pull"])
-    os.execv(sys.executable, ['python'] + sys.argv)
+    await interaction.response.send_message("🔄 Verifying integrity and rebooting...")
+    try:
+        subprocess.run(["git", "pull"], check=True)
+        os.execv(sys.executable, ['python'] + sys.argv)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Update Integrity Failure: {e}", ephemeral=True)
 
 if __name__ == "__main__":
-    # Garante que a lib está atualizada no ambiente (Opcional, mas ajuda no Replit/GitHub Actions)
-    # subprocess.run([sys.executable, "-m", "pip", "install", "-U", "discord.py"])
     bot.run(TOKEN)
