@@ -1,150 +1,112 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import aiohttp
 import asyncio
 import os
 import sys
 import subprocess
 import shutil
-import requests
 
 # --- CONFIGURAÇÕES --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
-# URL base para downloads (aponta para a raiz do seu repositório no GitHub)
-RAW_BASE_URL = "https://raw.githubusercontent.com"
-# URL direta do catálogo que você forneceu
-CATALOG_URL = "https://raw.githubusercontent.com"
+RAW_BASE = "https://raw.githubusercontent.com"
+CATALOG_URL = f"{RAW_BASE}catalog.json"
 
-intents = discord.Intents.default()
-intents.message_content = True
-auditor = commands.Bot(command_prefix='!', intents=intents)
+class AuditorBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix='!', intents=intents)
+        self.session = None # Sessão global para performance
 
-# --- SISTEMA WEBSCRIPTS (DINÂMICO VIA JSON) --- #
+    async def setup_hook(self):
+        # Cria a sessão de rede uma única vez
+        self.session = aiohttp.ClientSession()
+        print(f"📡 Sincronizando comandos...")
+        await self.tree.sync()
+
+    async def close(self):
+        if self.session:
+            await self.session.close()
+        await super().close()
+
+bot = AuditorBot()
+
+# --- SISTEMA DE DOWNLOADS --- #
 
 class DownloadView(discord.ui.View):
     def __init__(self, filename):
-        super().__init__(timeout=None)
+        super().__init__(timeout=180)
         self.filename = filename
 
     @discord.ui.button(label="Baixar Script", style=discord.ButtonStyle.success, emoji="📥")
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         
-        # Constrói a URL final: Base + Nome do arquivo vindo do JSON
-        file_url = f"{RAW_BASE_URL}{self.filename}"
-        res = requests.get(file_url)
-        
-        if res.status_code == 200:
-            # Salva temporariamente para enviar no Discord
-            with open(self.filename, "wb") as f:
-                f.write(res.content)
-            
-            await interaction.followup.send(
-                content=f"✅ Download concluído: `{self.filename}`", 
-                file=discord.File(self.filename), 
-                ephemeral=True
-            )
-            os.remove(self.filename) # Limpa o arquivo após o envio
-        else:
-            await interaction.followup.send(f"❌ Erro: Arquivo não encontrado no repositório.\nURL tentada: `{file_url}`", ephemeral=True)
+        try:
+            async with bot.session.get(f"{RAW_BASE}{self.filename}") as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    # Uso de BytesIO para não precisar salvar arquivo no disco do servidor
+                    import io
+                    file_data = io.BytesIO(data)
+                    await interaction.followup.send(
+                        content=f"✅ **{self.filename}** pronto!",
+                        file=discord.File(file_data, filename=self.filename),
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(f"❌ Erro no GitHub (Status: {resp.status})", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"⚠️ Falha na conexão: {e}", ephemeral=True)
 
 class WebScriptsSelect(discord.ui.Select):
-    def __init__(self, scripts_data):
-        self.scripts_data = scripts_data
+    def __init__(self, scripts):
         options = [
-            discord.SelectOption(
-                label=s['nome'], 
-                description=s['descricao'][:100], 
-                value=s['arquivo']
-            ) for s in scripts_data
+            discord.SelectOption(label=s['nome'], description=s.get('descricao', '')[:100], value=s['arquivo']) 
+            for s in scripts
         ]
-        super().__init__(placeholder="Selecione um script do catálogo...", options=options)
+        super().__init__(placeholder="Selecione um script...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        script = next(s for s in self.scripts_data if s['arquivo'] == self.values)
-        
-        embed = discord.Embed(
-            title=f"📦 {script['nome']}",
-            description=f"**Descrição:** {script['descricao']}\n**Arquivo:** `{script['arquivo']}`",
-            color=discord.Color.blue()
+        await interaction.response.send_message(
+            f"📥 Você selecionou: `{self.values[0]}`. Clique abaixo para baixar.",
+            view=DownloadView(self.values[0]),
+            ephemeral=True
         )
-        await interaction.response.send_message(embed=embed, view=DownloadView(script['arquivo']), ephemeral=True)
 
-class WebScriptsView(discord.ui.View):
-    def __init__(self, scripts_data):
-        super().__init__()
-        self.add_item(WebScriptsSelect(scripts_data))
+# --- COMANDOS --- #
 
-# --- CLASSES DE INTERFACE --- #
-
-class CreditButtons(discord.ui.View):
-    def __init__(self):
-        super().__init__()
-        self.add_item(discord.ui.Button(label="Ver Repositório", url="https://github.com", style=discord.ButtonStyle.link))
-        self.add_item(discord.ui.Button(label="Suporte", url="https://discord.com", style=discord.ButtonStyle.link))
-
-# --- EVENTOS PRINCIPAIS --- #
-
-@auditor.event
-async def on_ready():
-    print(f'🕵️‍♂️ Auditor pronto para serviço!')
-    await auditor.change_presence(activity=discord.Game(name="WebScripts Cloud 2026"))
-    try:
-        synced = await auditor.tree.sync()
-        print(f"📡 {len(synced)} comandos sincronizados!")
-    except Exception as e:
-        print(f"❌ Erro ao sincronizar: {e}")
-
-# --- COMANDOS DE BARRA (SLASH COMMANDS) --- #
-
-@auditor.tree.command(name="webscripts", description="Acesse o catálogo dinâmico de scripts")
+@bot.tree.command(name="webscripts", description="Catálogo de scripts otimizado")
 async def webscripts(interaction: discord.Interaction):
     try:
-        response = requests.get(CATALOG_URL)
-        if response.status_code != 200:
-            return await interaction.response.send_message(f"❌ Erro ao carregar `catalog.json`. Status: {response.status_code}", ephemeral=True)
-        
-        data = response.json()
-        scripts = data.get("scripts", [])
+        async with bot.session.get(CATALOG_URL) as resp:
+            if resp.status != 200:
+                return await interaction.response.send_message("❌ Erro ao acessar catálogo.", ephemeral=True)
+            
+            data = await resp.json(content_type=None)
+            scripts = data.get("scripts", [])
 
-        if not scripts:
-            return await interaction.response.send_message("📭 O catálogo está vazio no momento.", ephemeral=True)
-
-        embed = discord.Embed(
-            title="🌐 Central WebScripts",
-            description="Escolha um script abaixo. O download será enviado no seu privado.",
-            color=discord.Color.purple()
-        )
-        embed.set_footer(text="gitworkx/WebScripts • 2026")
-        await interaction.response.send_message(embed=embed, view=WebScriptsView(scripts))
+            view = discord.ui.View()
+            view.add_item(WebScriptsSelect(scripts))
+            
+            embed = discord.Embed(title="🌐 WebScripts Cloud", color=0x2b2d31)
+            embed.set_footer(text="Performance Mode Ativado 🚀")
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"⚠️ Erro no sistema: {e}", ephemeral=True)
+        await interaction.response.send_message(f"⚠️ Erro: {e}", ephemeral=True)
 
-@auditor.tree.command(name="ping", description="Verifica a latência do Auditor")
-async def ping_slash(interaction: discord.Interaction):
-    await interaction.response.send_message(f"📡 Latência: **{round(auditor.latency * 1000)}ms**")
+@bot.tree.command(name="ping", description="Latência real")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message(f"⚡ `{round(bot.latency * 1000)}ms`", ephemeral=True)
 
-@auditor.tree.command(name="update", description="Atualiza via Git e reinicia o bot")
+@bot.tree.command(name="update", description="Git Pull & Reload")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    await interaction.response.send_message("🛠️ Atualizando código via Git...")
-    try:
-        # Limpa cache do Python
-        for root, dirs, files in os.walk('.'):
-            if '__pycache__' in dirs:
-                shutil.rmtree(os.path.join(root, '__pycache__'))
-        
-        # Puxa atualizações do GitHub
-        subprocess.check_call(['git', 'pull'])
-        
-        await interaction.followup.send("♻️ Reiniciando...")
-        os.execv(sys.executable, ['python'] + sys.argv)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Erro: {e}")
+    await interaction.response.send_message("🔄 Atualizando...")
+    subprocess.run(["git", "pull"])
+    os.execv(sys.executable, ['python'] + sys.argv)
 
-# --- INICIALIZAÇÃO --- #
 if __name__ == "__main__":
-    if TOKEN:
-        auditor.run(TOKEN)
-    else:
-        print("❌ ERRO: Variável DISCORD_TOKEN não configurada.")
+    bot.run(TOKEN)
