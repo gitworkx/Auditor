@@ -2,28 +2,32 @@ name: Auditor 24/7 Hosting
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Reinicia a cada 6 horas
-  workflow_dispatch:      # Permite ligar o bot manualmente
+    - cron: '0 */6 * * *' # Auto-restart every 6 hours
+  workflow_dispatch:      # Manual trigger
 
 jobs:
   run-auditor:
     runs-on: ubuntu-latest
+    # Define o tempo máximo para não estourar o limite do GitHub drasticamente
+    timeout-minutes: 350 
+
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Atualizado para v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # Atualizado para v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run Auditor
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          REGRAS_PT: ${{ secrets.REGRAS_PT }}  # Puxa a secret de regras em PT
-          REGRAS_EN: ${{ secrets.REGRAS_EN }}  # Puxa a secret de regras em EN
+          REGRAS_PT: ${{ secrets.REGRAS_PT }}
+          REGRAS_EN: ${{ secrets.REGRAS_EN }}
         run: python main.py
