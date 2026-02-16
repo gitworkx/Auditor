@@ -6,26 +6,33 @@ class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="nuke", description="Resets the current channel (deletes and recreates)")
+    @app_commands.command(name="nuke", description="Purge all messages in this channel / Limpa o canal")
+    @app_commands.rename(nuke="limpar")
     @app_commands.checks.has_permissions(manage_channels=True)
-    @app_commands.guild_only()
     async def nuke(self, interaction: discord.Interaction):
-        await interaction.response.send_message("☢️ Executing total cleanup...", ephemeral=True)
+        is_pt = str(interaction.locale).startswith("pt")
+        
+        # Resposta inicial discreta
+        await interaction.response.send_message("⏳ ...", ephemeral=True)
         
         channel = interaction.channel
         pos = channel.position
         
-        # Clone channel and delete old one
-        new_channel = await channel.clone(reason=f"Nuke requested by {interaction.user}")
+        # Operação de Nuke
+        new_channel = await channel.clone(reason=f"Nuke: {interaction.user}")
         await channel.delete()
         await new_channel.edit(position=pos)
         
         embed = discord.Embed(
-            title="☣️ Channel Reset",
-            description=f"This channel has been purified by **{interaction.user.mention}**.",
-            color=0xff4747,
-            timestamp=discord.utils.utcnow()
+            title="☢️ " + ("Canal Purificado" if is_pt else "Channel Purified"),
+            description=(
+                f"Toda a radiação foi removida por {interaction.user.mention}." if is_pt 
+                else f"All radiation removed by {interaction.user.mention}."
+            ),
+            color=0xff4747
         )
+        embed.set_image(url="https://i.imgur.com") # Gif de explosão (opcional)
+        
         await new_channel.send(embed=embed)
 
 async def setup(bot):
