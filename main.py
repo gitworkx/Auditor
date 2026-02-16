@@ -12,24 +12,24 @@ class AuditorBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # Carrega automaticamente todos os arquivos da pasta /cogs
+        # Auto-load all files from /cogs directory
         for filename in os.listdir('./cogs'):
             if filename.endswith('.py'):
                 await self.load_extension(f'cogs.{filename[:-3]}')
         
         await self.tree.sync()
-        print(f"✅ Logado como {self.user} | Comandos sincronizados.")
+        print(f"✅ Logged in as {self.user} | Commands synced.")
 
 bot = AuditorBot()
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("🚫 **Erro:** Permissão `Gerenciar Canais` necessária.", ephemeral=True)
+        await interaction.response.send_message("🚫 **Error:** You need `Manage Channels` permission.", ephemeral=True)
     else:
-        print(f"Erro: {error}")
+        print(f"Command Error: {error}")
         if not interaction.response.is_done():
-            await interaction.response.send_message("⚠️ Erro inesperado.", ephemeral=True)
+            await interaction.response.send_message("⚠️ An unexpected error occurred.", ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
