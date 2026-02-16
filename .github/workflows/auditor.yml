@@ -2,8 +2,8 @@ name: Auditor 24/7 Hosting
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Reinicia a cada 6 horas (limite do Actions)
-  workflow_dispatch:      # Permite ligar o bot manualmente no botão
+    - cron: '0 */6 * * *' # Reinicia a cada 6 horas
+  workflow_dispatch:      # Permite ligar o bot manualmente
 
 jobs:
   run-auditor:
@@ -18,9 +18,12 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
 
       - name: Run Auditor
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          REGRAS_PT: ${{ secrets.REGRAS_PT }}  # Puxa a secret de regras em PT
+          REGRAS_EN: ${{ secrets.REGRAS_EN }}  # Puxa a secret de regras em EN
         run: python main.py
