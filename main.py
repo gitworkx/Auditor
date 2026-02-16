@@ -8,7 +8,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 
 class AuditorBot(commands.Bot):
     def __init__(self):
-        # Setting up intents for full functionality
+        # Intents are required for message content and guild interactions
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents)
@@ -18,7 +18,6 @@ class AuditorBot(commands.Bot):
         Executed when the bot starts. 
         Automatically loads all Cogs from the /cogs directory.
         """
-        # Ensure the 'cogs' directory exists before iterating
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
@@ -28,43 +27,51 @@ class AuditorBot(commands.Bot):
                     except Exception as e:
                         print(f"❌ Failed to load extension {filename}: {e}")
         
-        # Syncs Slash Commands globally
+        # Important: Syncs the tree to apply @app_commands.rename (localization)
         await self.tree.sync()
-        print(f"✅ Logged in as {self.user} | Commands synced.")
+        print(f"✅ Logged in as {self.user} | Commands & Translations synced.")
 
 bot = AuditorBot()
 
-# --- GLOBAL ERROR HANDLING --- #
+# --- GLOBAL ERROR HANDLING (Bilingual) --- #
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """
-    Global error handler that detects user locale (PT/EN).
+    Handles errors globally and responds in the user's language.
     """
-    is_portuguese = str(interaction.locale).startswith("pt")
+    is_pt = str(interaction.locale).startswith("pt")
 
     if isinstance(error, app_commands.MissingPermissions):
         msg = (
-            "🚫 **Erro:** Você precisa da permissão `Gerenciar Canais` para usar isso." 
-            if is_portuguese else 
-            "🚫 **Error:** You need `Manage Channels` permission to use this."
+            "🚫 **Erro:** Você não tem a permissão `Gerenciar Canais` para usar este comando." 
+            if is_pt else 
+            "🚫 **Error:** You lack `Manage Channels` permission to use this command."
         )
         await interaction.response.send_message(msg, ephemeral=True)
     
+    elif isinstance(error, app_commands.CommandOnCooldown):
+        msg = (
+            f"⏳ **Cooldown:** Tente novamente em {error.retry_after:.2f}s." 
+            if is_pt else 
+            f"⏳ **Cooldown:** Try again in {error.retry_after:.2f}s."
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
     else:
-        # Logs the error to the console for debugging
+        # Logs the specific error for you to see in GitHub Actions
         print(f"Command Error: {error}")
         
         if not interaction.response.is_done():
             err_msg = (
-                "⚠️ Ocorreu um erro inesperado." 
-                if is_portuguese else 
-                "⚠️ An unexpected error occurred."
+                "⚠️ **Erro Crítico:** Algo deu errado na execução." 
+                if is_pt else 
+                "⚠️ **Critical Error:** Something went wrong during execution."
             )
             await interaction.response.send_message(err_msg, ephemeral=True)
 
-# --- INITIALIZATION --- #
+# --- BOT INITIALIZATION --- #
 if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ CRITICAL ERROR: DISCORD_TOKEN environment variable not found.")
+        print("❌ CRITICAL: DISCORD_TOKEN not found in environment variables.")
