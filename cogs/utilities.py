@@ -1,70 +1,46 @@
 import discord
-from discord.ext import commands
 from discord import app_commands
+from discord.ext import commands
 import os
 
-# --- CONFIGURATION --- #
-TOKEN = os.getenv('DISCORD_TOKEN')
+class Utilities(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.rules_pt = os.getenv('REGRAS_PT', '❌ Não configurado.').replace('\\n', '\n')
+        self.rules_en = os.getenv('REGRAS_EN', '❌ Not configured.').replace('\\n', '\n')
 
-class AuditorBot(commands.Bot):
-    def __init__(self):
-        # Setting up intents for full functionality
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix='!', intents=intents)
-
-    async def setup_hook(self):
-        """
-        Executed when the bot starts. 
-        Automatically loads all Cogs from the /cogs directory.
-        """
-        # Ensure the 'cogs' directory exists before iterating
-        if os.path.exists('./cogs'):
-            for filename in os.listdir('./cogs'):
-                if filename.endswith('.py'):
-                    try:
-                        await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"📦 Extension loaded: {filename}")
-                    except Exception as e:
-                        print(f"❌ Failed to load extension {filename}: {e}")
+    @app_commands.command(
+        name="rules", 
+        description="View the server rules / Ver as regras do servidor"
+    )
+    # Define as traduções do NOME do comando na lista do /
+    @app_commands.rename(rules="regras")
+    async def rules(self, interaction: discord.Interaction):
+        is_pt = str(interaction.locale).startswith("pt")
         
-        # Syncs Slash Commands globally
-        await self.tree.sync()
-        print(f"✅ Logged in as {self.user} | Commands synced.")
-
-bot = AuditorBot()
-
-# --- GLOBAL ERROR HANDLING --- #
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    """
-    Global error handler that detects user locale (PT/EN).
-    """
-    is_portuguese = str(interaction.locale).startswith("pt")
-
-    if isinstance(error, app_commands.MissingPermissions):
-        msg = (
-            "🚫 **Erro:** Você precisa da permissão `Gerenciar Canais` para usar isso." 
-            if is_portuguese else 
-            "🚫 **Error:** You need `Manage Channels` permission to use this."
+        embed = discord.Embed(
+            title="📜 " + ("Regras do Servidor" if is_pt else "Server Rules"),
+            description=self.rules_pt if is_pt else self.rules_en,
+            color=0x2b2d31 # Cor elegante (Dark Mode Grey)
         )
-        await interaction.response.send_message(msg, ephemeral=True)
-    
-    else:
-        # Logs the error to the console for debugging
-        print(f"Command Error: {error}")
         
-        if not interaction.response.is_done():
-            err_msg = (
-                "⚠️ Ocorreu um erro inesperado." 
-                if is_portuguese else 
-                "⚠️ An unexpected error occurred."
-            )
-            await interaction.response.send_message(err_msg, ephemeral=True)
+        embed.set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+        embed.set_footer(text=f"Requested by: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# --- INITIALIZATION --- #
-if __name__ == "__main__":
-    if TOKEN:
-        bot.run(TOKEN)
-    else:
-        print("❌ CRITICAL ERROR: DISCORD_TOKEN environment variable not found.")
+    @app_commands.command(name="ping", description="Check bot stability / Ver estabilidade")
+    @app_commands.rename(ping="latencia")
+    async def ping(self, interaction: discord.Interaction):
+        is_pt = str(interaction.locale).startswith("pt")
+        latency = round(self.bot.latency * 1000)
+        
+        embed = discord.Embed(
+            title="📡 " + ("Status da Conexão" if is_pt else "Connection Status"),
+            description=f"**Latency:** `{latency}ms`" if not is_pt else f"**Latência:** `{latency}ms`",
+            color=0x2ecc71 if latency < 150 else 0xf1c40f
+        )
+        await interaction.response.send_message(embed=embed)
+
+async def setup(bot):
+    await bot.add_cog(Utilities(bot))
