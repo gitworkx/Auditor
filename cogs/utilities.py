@@ -1,49 +1,70 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
+from discord import app_commands
 import os
 
-class Utilities(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        # Load and clean environment variables
-        self.rules_pt = os.getenv('REGRAS_PT', 'Regras não configuradas.').replace('\\n', '\n')
-        self.rules_en = os.getenv('REGRAS_EN', 'Rules not configured.').replace('\\n', '\n')
+# --- CONFIGURATION --- #
+TOKEN = os.getenv('DISCORD_TOKEN')
 
-    @app_commands.command(name="rules", description="Shows server rules / Exibe as regras do servidor")
-    async def rules(self, interaction: discord.Interaction):
-        # interaction.locale identifies the user's language
-        # pt-BR and pt-PT both start with 'pt'
-        is_portuguese = str(interaction.locale).startswith("pt")
+class AuditorBot(commands.Bot):
+    def __init__(self):
+        # Setting up intents for full functionality
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix='!', intents=intents)
 
-        if is_portuguese:
-            title = "📜 Regras do Servidor"
-            content = self.rules_pt
-            footer = f"Solicitado por {interaction.user.display_name}"
-        else:
-            title = "📜 Server Rules"
-            content = self.rules_en
-            footer = f"Requested by {interaction.user.display_name}"
+    async def setup_hook(self):
+        """
+        Executed when the bot starts. 
+        Automatically loads all Cogs from the /cogs directory.
+        """
+        # Ensure the 'cogs' directory exists before iterating
+        if os.path.exists('./cogs'):
+            for filename in os.listdir('./cogs'):
+                if filename.endswith('.py'):
+                    try:
+                        await self.load_extension(f'cogs.{filename[:-3]}')
+                        print(f"📦 Extension loaded: {filename}")
+                    except Exception as e:
+                        print(f"❌ Failed to load extension {filename}: {e}")
+        
+        # Syncs Slash Commands globally
+        await self.tree.sync()
+        print(f"✅ Logged in as {self.user} | Commands synced.")
 
-        embed = discord.Embed(
-            title=title,
-            description=content,
-            color=discord.Color.blue(),
-            timestamp=discord.utils.utcnow()
+bot = AuditorBot()
+
+# --- GLOBAL ERROR HANDLING --- #
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """
+    Global error handler that detects user locale (PT/EN).
+    """
+    is_portuguese = str(interaction.locale).startswith("pt")
+
+    if isinstance(error, app_commands.MissingPermissions):
+        msg = (
+            "🚫 **Erro:** Você precisa da permissão `Gerenciar Canais` para usar isso." 
+            if is_portuguese else 
+            "🚫 **Error:** You need `Manage Channels` permission to use this."
         )
-        embed.set_footer(text=footer)
+        await interaction.response.send_message(msg, ephemeral=True)
+    
+    else:
+        # Logs the error to the console for debugging
+        print(f"Command Error: {error}")
         
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        if not interaction.response.is_done():
+            err_msg = (
+                "⚠️ Ocorreu um erro inesperado." 
+                if is_portuguese else 
+                "⚠️ An unexpected error occurred."
+            )
+            await interaction.response.send_message(err_msg, ephemeral=True)
 
-    @app_commands.command(name="ping", description="Check bot latency / Verifica latência")
-    async def ping(self, interaction: discord.Interaction):
-        is_portuguese = str(interaction.locale).startswith("pt")
-        latency = round(self.bot.latency * 1000)
-        
-        if is_portuguese:
-            await interaction.response.send_message(f"🏓 Pong! Latência: **{latency}ms**")
-        else:
-            await interaction.response.send_message(f"🏓 Pong! Latency: **{latency}ms**")
-
-async def setup(bot):
-    await bot.add_cog(Utilities(bot))
+# --- INITIALIZATION --- #
+if __name__ == "__main__":
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("❌ CRITICAL ERROR: DISCORD_TOKEN environment variable not found.")
