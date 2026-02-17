@@ -2,76 +2,61 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import os
+import sys
+import subprocess
+from datetime import datetime
 
-# --- CONFIGURATION --- #
+# --- CONFIGURAÇÃO --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 class AuditorBot(commands.Bot):
     def __init__(self):
-        # Intents are required for message content and guild interactions
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        """
-        Executed when the bot starts. 
-        Automatically loads all Cogs from the /cogs directory.
-        """
-        if os.path.exists('./cogs'):
-            for filename in os.listdir('./cogs'):
-                if filename.endswith('.py'):
-                    try:
-                        await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"📦 Extension loaded: {filename}")
-                    except Exception as e:
-                        print(f"❌ Failed to load extension {filename}: {e}")
-        
-        # Important: Syncs the tree to apply @app_commands.rename (localization)
+        # Sincroniza os comandos de barra (/)
         await self.tree.sync()
-        print(f"✅ Logged in as {self.user} | Commands & Translations synced.")
 
 bot = AuditorBot()
 
-# --- GLOBAL ERROR HANDLING (Bilingual) --- #
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    """
-    Handles errors globally and responds in the user's language.
-    """
-    is_pt = str(interaction.locale).startswith("pt")
+# --- COMANDOS --- #
 
-    if isinstance(error, app_commands.MissingPermissions):
-        msg = (
-            "🚫 **Erro:** Você não tem a permissão `Gerenciar Canais` para usar este comando." 
-            if is_pt else 
-            "🚫 **Error:** You lack `Manage Channels` permission to use this command."
-        )
-        await interaction.response.send_message(msg, ephemeral=True)
+@bot.tree.command(name="nuke", description="Reseta o canal atual")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def nuke(interaction: discord.Interaction):
+    await interaction.response.send_message("☢️ Limpando...", ephemeral=True)
     
-    elif isinstance(error, app_commands.CommandOnCooldown):
-        msg = (
-            f"⏳ **Cooldown:** Tente novamente em {error.retry_after:.2f}s." 
-            if is_pt else 
-            f"⏳ **Cooldown:** Try again in {error.retry_after:.2f}s."
-        )
-        await interaction.response.send_message(msg, ephemeral=True)
+    pos = interaction.channel.position
+    new_channel = await interaction.channel.clone(reason="Nuke")
+    await interaction.channel.delete()
+    await new_channel.edit(position=pos)
+    
+    embed = discord.Embed(
+        title="☣️ Canal Resetado",
+        description=f"Ação executada por **{interaction.user.name}**.",
+        color=0xff4747
+    )
+    await new_channel.send(embed=embed)
 
-    else:
-        # Logs the specific error for you to see in GitHub Actions
-        print(f"Command Error: {error}")
-        
-        if not interaction.response.is_done():
-            err_msg = (
-                "⚠️ **Erro Crítico:** Algo deu errado na execução." 
-                if is_pt else 
-                "⚠️ **Critical Error:** Something went wrong during execution."
-            )
-            await interaction.response.send_message(err_msg, ephemeral=True)
+@bot.tree.command(name="ping", description="Verifica latência")
+async def ping(interaction: discord.Interaction):
+    latency = round(bot.latency * 1000)
+    await interaction.response.send_message(f"📡 `{latency}ms`", ephemeral=True)
 
-# --- BOT INITIALIZATION --- #
+@bot.tree.command(name="update", description="Git Pull e Reboot")
+@app_commands.checks.has_permissions(administrator=True)
+async def update(interaction: discord.Interaction):
+    await interaction.response.send_message("🔄 Atualizando...", ephemeral=True)
+    try:
+        subprocess.run(["git", "pull"], check=True)
+        os.execv(sys.executable, ['python'] + sys.argv)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Erro: {e}", ephemeral=True)
+
 if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ CRITICAL: DISCORD_TOKEN not found in environment variables.")
+        print("❌ Defina a variável DISCORD_TOKEN")
