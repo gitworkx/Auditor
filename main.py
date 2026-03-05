@@ -6,7 +6,7 @@ import sys
 import subprocess
 from datetime import datetime
 
-# --- CONFIGURATION --- #
+# --- CONFIGURAÇÃO --- #
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 class AuditorBot(commands.Bot):
@@ -16,42 +16,42 @@ class AuditorBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # Syncs slash (/) commands
+        # Sincroniza os comandos de barra (/)
         await self.tree.sync()
 
 bot = AuditorBot()
 
-# --- COMMANDS --- #
+# --- COMANDOS --- #
 
-@bot.tree.command(name="nuke2", description="Media destruction protocol (Unrecoverable)")
-@app_commands.describe(amount="Number of messages to scan for media")
+@bot.tree.command(name="nuke2", description="Protocolo de destruição de mídia (Irrecuperável)")
+@app_commands.describe(amount="Número de mensagens para escanear em busca de mídias")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def nuke2(interaction: discord.Interaction, amount: int = 100):
     """
-    Scans recent history and wipes only messages with attachments or links.
-    Invalidates CDN links permanently.
+    Escanreia o histórico recente e apaga apenas mensagens com anexos ou links.
+    Invalida os links do CDN permanentemente.
     """
-    await interaction.response.send_message("☣️ **Overwrite Protocol Active.** Purging media traces...", ephemeral=True)
+    await interaction.response.send_message("☣️ **Protocolo de Sobrescrita Ativo.** Expurgando rastros de mídia...", ephemeral=True)
     
     def is_media(m):
-        # Checks for files or links that likely host media
+        # Verifica arquivos ou links que provavelmente contêm mídia
         return len(m.attachments) > 0 or "http" in m.content
 
     deleted = await interaction.channel.purge(limit=amount, check=is_media)
     
     embed = discord.Embed(
-        title="☢️ Media Disintegrated",
-        description=f"Successfully eliminated **{len(deleted)}** files/links from this channel.\n"
-                    f"Status: **Zero Recovery Probability (CDN Purged)**",
+        title="☢️ Mídias Desintegradas",
+        description=f"Eliminado com sucesso **{len(deleted)}** arquivos/links deste canal.\n"
+                    f"Status: **Probabilidade de Recuperação Zero (CDN Purged)**",
         color=0x000000
     )
-    embed.set_footer(text="Permanent Action • No media logs remaining.")
+    embed.set_footer(text="Ação Permanente • Sem logs de mídia restantes.")
     await interaction.channel.send(embed=embed)
 
-@bot.tree.command(name="nuke", description="Resets the current channel")
+@bot.tree.command(name="nuke", description="Reseta o canal atual")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def nuke(interaction: discord.Interaction):
-    await interaction.response.send_message("☢️ Cleaning...", ephemeral=True)
+    await interaction.response.send_message("☢️ Limpando...", ephemeral=True)
     
     pos = interaction.channel.position
     new_channel = await interaction.channel.clone(reason="Nuke")
@@ -59,29 +59,29 @@ async def nuke(interaction: discord.Interaction):
     await new_channel.edit(position=pos)
     
     embed = discord.Embed(
-        title="☣️ Channel Reset",
-        description=f"Action executed by **{interaction.user.name}**.",
+        title="☣️ Canal Resetado",
+        description=f"Ação executada por **{interaction.user.name}**.",
         color=0xff4747
     )
     await new_channel.send(embed=embed)
 
-@bot.tree.command(name="ping", description="Checks latency")
+@bot.tree.command(name="ping", description="Verifica a latência")
 async def ping(interaction: discord.Interaction):
     latency = round(bot.latency * 1000)
     await interaction.response.send_message(f"📡 `{latency}ms`", ephemeral=True)
 
-@bot.tree.command(name="update", description="Git Pull and Reboot")
+@bot.tree.command(name="update", description="Git Pull e Reinicialização")
 @app_commands.checks.has_permissions(administrator=True)
 async def update(interaction: discord.Interaction):
-    await interaction.response.send_message("🔄 Updating...", ephemeral=True)
+    await interaction.response.send_message("🔄 Atualizando...", ephemeral=True)
     try:
         subprocess.run(["git", "pull"], check=True)
         os.execv(sys.executable, ['python'] + sys.argv)
     except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ Erro: {e}", ephemeral=True)
 
 if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ Please define DISCORD_TOKEN variable")
+        print("❌ Por favor, defina a variável de ambiente DISCORD_TOKEN")
