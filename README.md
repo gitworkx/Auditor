@@ -1,12 +1,12 @@
 # 🕵️‍♂️ Auditor Bot
 
-The **Auditor** is an automated monitoring system for Discord, designed to ensure the integrity of channels through real-time audit protocols. It filters media and links, and manages message persistence.
+The **Auditor** is an automated monitoring system for Discord, designed to ensure the integrity of channels through real-time audit protocols. It filters media and links, and manages message persistence, very stupid also yet simple.
 
 ---
 
 ## ✨ Main Features
 
-* 🛡️ **NSFW Protocol:** Automatic blocking of attachments and links in unauthorized channels.
+* 🛡️ Removed lol, I forgot to remove from description
 
 
 
